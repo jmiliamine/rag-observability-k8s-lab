@@ -45,7 +45,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
-          image: pgvector/pgvector:0.8.6-pg18-trixie
+          image: pgvector/pgvector:0.8.7-pg18-trixie
           ports:
             - name: postgres
               containerPort: 5432
