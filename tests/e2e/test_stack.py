@@ -138,3 +138,8 @@ def test_logs_reach_loki_with_the_trace_id(asked):
     start = int((time.time() - 900) * 1e9)
     res = _poll(lambda: request(f"{LOKI}/loki/api/v1/query_range?query={q}&start={start}&limit=5")["data"]["result"])
     assert res, f"no log line carrying trace_id={trace_id} in Loki"
+    # The same lines, as events: a name and its fields, usable as filters (telemetry/events.py).
+    q = urllib.parse.quote(f'{{service_name="obslab-rag"}} |= "rag.answered" | trace_id="{trace_id}"'
+                           ' | rag_route="answered"')
+    res = request(f"{LOKI}/loki/api/v1/query_range?query={q}&start={start}&limit=5")["data"]["result"]
+    assert res, "the log line of the answer is not the rag.answered event, or its fields are missing"

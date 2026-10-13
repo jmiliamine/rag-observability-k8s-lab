@@ -15,6 +15,9 @@ data:
   OBSLAB_TELEMETRY: otlp
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4318
   OTEL_SERVICE_NAME: obslab-rag
+  # Events also go to the container output, one JSON object per line: `kubectl logs` shows them
+  # even when the collector or Loki is down. Nothing collects that output, so no line is doubled.
+  OBSLAB_LOG_STDOUT: "true"
   OBSLAB_ENVIRONMENT: k3d
   # Vector store: PostgreSQL + pgvector in this namespace. Standard libpq variables; each workload
   # adds its own PGUSER/PGPASSWORD from the obslab-db Secret (reader for the API, writer for ingest).

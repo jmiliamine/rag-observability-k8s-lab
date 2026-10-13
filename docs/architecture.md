@@ -115,7 +115,7 @@ What protects the index:
 | RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests | Prometheus |
 | HTTP metrics | `http.server.request.duration` (stable semantic conventions) | Prometheus |
 | Traces | one tree per question, GenAI attributes on each model call, a database span per vector query | Tempo |
-| Logs | one record per answer with route, rewrites and groundedness, plus the trace ID | Loki |
+| Logs | named events with fixed fields (answer, refusal, failure, ingest, purge, start, stop), each with its trace ID | Loki, and the container output |
 
 Metric labels are bounded (operation, model, node, reason, error type). Prompts and answers
 only appear on spans when `OBSLAB_CAPTURE_CONTENT=true`.
@@ -236,6 +236,26 @@ is its own number, on the node span (`rag.admission.wait_s`) and in `rag.admissi
 to the model's execution time. Sizing rule: queue x typical answer time < deadline < the
 caller's timeout. The bound is per replica, not global: two replicas admit twice as much. The
 probes are unchanged, since a busy model is not an unready pod.
+
+**Logs are events, defined in one file.** Metric and span names live in one module; log lines
+get the same treatment in `telemetry/events.py`. A line is an event with a fixed name and a fixed
+list of fields, not a sentence, and a call with an unknown event or field fails.
+
+| Event | Level | Fields |
+|---|---|---|
+| `rag.answered` | INFO | route, rewrites, groundedness, turn, conversation ID |
+| `rag.refused` | WARNING | reason: `queue_full`, `deadline` or `conversation_too_long` |
+| `rag.failed` | ERROR | error type |
+| `ingest.finished` | INFO | chunks, seconds |
+| `ingest.failed` | ERROR | reason: `source_missing` or `no_notes` |
+| `conversations.purged` | INFO | removed, kept, days |
+| `app.started`, `app.stopping` | INFO | provider |
+
+Each event goes to Loki through OpenTelemetry with its trace and span IDs, and to the container
+output as one JSON object per line, so `kubectl logs`, a CI log and Grafana show the same names
+and the same fields. A field holds a number, an ID or a value from a short list: no question or
+answer text, no exception message (the trace keeps it), no connection string. Tests check the
+list, the JSON line, and that no other module logs or prints, the command-line output aside.
 
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every

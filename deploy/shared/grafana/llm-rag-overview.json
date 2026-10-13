@@ -691,7 +691,7 @@
     },
     {
       "type": "logs",
-      "title": "Application logs (click a trace_id to open the trace)",
+      "title": "Application events (click a trace_id to open the trace)",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -704,7 +704,7 @@
       },
       "targets": [
         {
-          "expr": "{service_name=\"obslab-rag\"}",
+          "expr": "{service_name=\"obslab-rag\"} | line_format \"{{__line__}} {{.rag_route}}{{.rag_refusal_reason}}{{.error_type}}{{.obslab_ingest_reason}}\"",
           "refId": "A"
         }
       ],
