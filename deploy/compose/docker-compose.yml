@@ -53,7 +53,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: pgvector/pgvector:0.8.6-pg18-trixie
+    image: pgvector/pgvector:0.8.7-pg18-trixie
     environment:
       POSTGRES_DB: obslab
       POSTGRES_USER: postgres
