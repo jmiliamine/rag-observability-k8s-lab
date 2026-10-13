@@ -83,10 +83,11 @@ class RagMetrics:
         self.rewrites = meter.create_counter(
             "rag.query.rewrites", unit="{rewrite}", description="Query rewrites triggered by poor retrieval.")
         self.fallbacks = meter.create_counter(
-            "rag.fallbacks", unit="{request}", description="Answers refused for lack of relevant context.")
+            "rag.fallbacks", unit="{request}",
+            description="Questions answered with I-don't-know: no relevant context, or the model declined.")
         self.groundedness = meter.create_histogram(
             "rag.answer.groundedness", unit="{score}",
-            description="Share of answer content words found in the retrieved context (0-1).",
+            description="Share of answer words found in the retrieved context (0-1): vocabulary, not correctness.",
             explicit_bucket_boundaries_advisory=SCORE_BUCKETS)
         self.turn = meter.create_histogram(
             "rag.conversation.turn", unit="{turn}",

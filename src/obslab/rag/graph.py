@@ -115,8 +115,16 @@ def standalone_question(follow_up: str, candidate: str) -> str:
     return candidate if kept >= 0.5 else follow_up
 
 
+def declined(answer: str) -> bool:
+    """True when the model itself says it does not know, as the system prompt asks it to when the
+    context is not enough. Such an answer is a fallback, not an answer."""
+    return re.match(r"\W*i (don['\u2019]t|do not) know\b", answer, flags=re.IGNORECASE) is not None
+
+
 def groundedness(answer: str, context: str) -> float:
-    """Cheap, deterministic proxy: share of answer content words present in the context."""
+    """Share of the answer's content words that are present in the context. Cheap and
+    deterministic. It measures vocabulary, not meaning: an answer that uses the words of the notes
+    to say the opposite keeps a high score, so this is a signal of drift, not of correctness."""
     words = [w for w in re.findall(r"[a-zà-ÿ0-9]{3,}", answer.lower()) if w not in STOP]
     if not words:
         return 0.0
@@ -242,6 +250,12 @@ class RagApp:
             finally:
                 stream.close()
         answer = "".join(parts).strip()
+        if declined(answer):
+            # Chunks were found, but the model judged them not enough. Counted with the fallbacks,
+            # under its own reason, so the fallback rate covers every "I don't know".
+            self.rag_metrics.fallbacks.add(1, {"reason": "model_declined"})
+            return {"answer": answer, "route": "fallback", "sources": [], "turn": state.get("turn", 0) + 1,
+                    "messages": self._remember(state, answer)}
         sources = sorted({d.metadata.get("source", "?") for d, _ in state["relevant"]})
         # The turn only counts once it is answered: a failed run leaves the conversation as it was.
         return {"answer": answer, "route": "answered", "sources": sources, "turn": state.get("turn", 0) + 1,
@@ -256,6 +270,8 @@ class RagApp:
                 "messages": self._remember(state, FALLBACK_ANSWER)}
 
     def grade(self, state: RagState) -> dict[str, Any]:
+        if state.get("route") == "fallback":        # the model declined: there is no answer to score
+            return {"groundedness": 0.0, "hits": [], "relevant": []}
         context = " ".join(d.page_content for d, _ in state.get("relevant", []))
         score = groundedness(state.get("answer", ""), context)
         self.rag_metrics.groundedness.record(score, {"gen_ai.data_source.id": self.index_name})

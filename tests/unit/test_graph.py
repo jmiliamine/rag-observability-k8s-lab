@@ -1,4 +1,7 @@
-from obslab.rag.graph import FALLBACK_ANSWER, groundedness
+import pytest
+
+from obslab.rag.graph import FALLBACK_ANSWER, declined, groundedness
+from obslab.rag.providers import FakeChat
 
 from conftest import metrics_by_name, spans_by_name
 
@@ -60,3 +63,39 @@ def test_groundedness_heuristic():
     assert groundedness("Etcd snapshots restore data", "etcd snapshot restore data directory") == 0.75
     assert groundedness("", "anything") == 0.0
     assert groundedness("completely unrelated banana", "etcd backup") == 0.0
+
+
+class DecliningChat(FakeChat):
+    """Finds the context insufficient, the way a real model sometimes does."""
+
+    def _reply(self, messages):
+        prompt = "\n".join(str(m.content) for m in messages)
+        if "Context:" in prompt and "Follow-up:" not in prompt:
+            return "I don't know. The provided context does not mention that."
+        return super()._reply(messages)
+
+
+def test_a_model_that_says_it_does_not_know_is_a_fallback(components, otel):
+    _, _, reader = otel
+    components.rag.llm = DecliningChat()
+    first = components.ask("What does cosine similarity measure?")
+    assert first["route"] == "fallback" and first["answer"].startswith("I don't know")
+    assert first["sources"] == [] and first["groundedness"] == 0.0 and first["turn"] == 1
+    got = metrics_by_name(reader)
+    assert [(dict(p.attributes), p.value) for p in got["rag.fallbacks"]] == [({"reason": "model_declined"}, 1)]
+    assert "rag.answer.groundedness" not in got                # nothing to score
+    assert components.ask("And for ranking?", first["conversation_id"])["turn"] == 2     # the turn counted
+
+
+@pytest.mark.parametrize("answer, expected", [
+    ("I don't know. The provided context does not mention the NoExecute effect.", True),
+    ("I don’t know.", True),
+    ("  \"I do not know based on the context.\"", True),
+    ("i don't know", True),
+    ("Cosine similarity measures the angle between two vectors.", False),
+    ("The notes say what to do when you don't know the node name.", False),
+    ("I don't knowingly skip steps.", False),
+    ("", False),
+])
+def test_declined_recognises_the_model_saying_it_does_not_know(answer, expected):
+    assert declined(answer) is expected
