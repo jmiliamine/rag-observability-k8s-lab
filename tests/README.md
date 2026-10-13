@@ -43,7 +43,7 @@ one question and follows it:
 1. the answer comes from the right note,
 2. its metrics are in Prometheus, the wait for a model slot included,
 3. its trace is complete in Tempo, down to the SQL query on `rag.chunks`,
-4. its log line is in Loki, findable by trace ID.
+4. its log line is in Loki, findable by trace ID, as the `rag.answered` event with its fields.
 
 This is the cheapest test that proves the whole telemetry path, and it needs no model: the app
 runs with the fake provider.

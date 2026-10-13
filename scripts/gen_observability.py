@@ -108,9 +108,12 @@ ts("Groundedness", [(HQ.format(q=q, by="", m="rag_answer_groundedness"), f"p{int
 advance()
 ts("Query rewrites & fallbacks / min", [("sum(rate(rag_query_rewrites_total[$__rate_interval])) * 60", "rewrites"),
                                         ("sum(rate(rag_fallbacks_total[$__rate_interval])) * 60", "fallbacks")], "short", 0, 12)
-panels.append({"type": "logs", "title": "Application logs (click a trace_id to open the trace)", "datasource": LOKI,
+# One line per event (telemetry/events.py): its name, which is the body of the log record, then
+# the field that says what happened.
+EVENT_LINE = '{{__line__}} {{.rag_route}}{{.rag_refusal_reason}}{{.error_type}}{{.obslab_ingest_reason}}'
+panels.append({"type": "logs", "title": "Application events (click a trace_id to open the trace)", "datasource": LOKI,
                "gridPos": {"h": 8, "w": 12, "x": 12, "y": y},
-               "targets": [{"expr": '{service_name="obslab-rag"}', "refId": "A"}],
+               "targets": [{"expr": f'{{service_name="obslab-rag"}} | line_format "{EVENT_LINE}"', "refId": "A"}],
                "options": {"showTime": True, "wrapLogMessage": True}})
 advance()
 

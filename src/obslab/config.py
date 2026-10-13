@@ -19,7 +19,8 @@ OBSLAB_REQUEST_DEADLINE_S  seconds a question may take before it is dropped, def
 OBSLAB_TOP_K / OBSLAB_MIN_SCORE   retrieval tuning (validated: 1..20 and 0..1)
 OBSLAB_PRICE_IN / OBSLAB_PRICE_OUT  USD per 1M tokens, to chart an "API-equivalent" cost
 OBSLAB_ENVIRONMENT       deployment.environment.name resource attribute (local, k3d, ...)
-OBSLAB_LOG_STDOUT        true to also print app logs on stdout (containers: `kubectl logs`)
+OBSLAB_LOG_STDOUT        true to also write each log event as a JSON line on the process output
+                         (containers: `kubectl logs`); events are listed in telemetry/events.py
 """
 
 from __future__ import annotations

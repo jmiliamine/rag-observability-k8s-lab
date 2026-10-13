@@ -23,7 +23,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -37,8 +36,7 @@ from pydantic import BaseModel, Field
 from .app import Components
 from .rag.admission import DeadlineExceeded, Overloaded
 from .rag.graph import ConversationTooLongError
-
-log = logging.getLogger("obslab.api")
+from .telemetry import emit
 
 
 class Ask(BaseModel):
@@ -57,7 +55,9 @@ def create_app(components: Components) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        emit("app.started", {"obslab.provider": components.settings.provider})
         yield
+        emit("app.stopping")
         components.close()      # database connections
         tel.shutdown()          # flush telemetry buffers before the process exits
 
@@ -88,19 +88,23 @@ def create_app(components: Components) -> FastAPI:
             result = components.ask(body.question, str(body.conversation_id) if body.conversation_id else None,
                                     deadline_s=x_request_timeout)
         except ConversationTooLongError as e:
+            emit("rag.refused", {"rag.refusal.reason": "conversation_too_long"})
             raise HTTPException(status_code=409, detail=f"{e}: start a new conversation") from e
         except Overloaded as e:
             # Refused before any work: the model already has a full waiting line. 503 and not 429,
             # the limit is the service's capacity, not this client's quota.
+            emit("rag.refused", {"rag.refusal.reason": "queue_full"})
             raise HTTPException(status_code=503, detail="busy: the model queue is full, retry shortly",
                                 headers={"Retry-After": "5"}) from e
         except DeadlineExceeded as e:
+            emit("rag.refused", {"rag.refusal.reason": "deadline"})
             raise HTTPException(status_code=504, detail="the request deadline passed before an answer was ready",
                                 headers={"Retry-After": "5"}) from e
         except Exception as e:
             # 502: a dependency (model, vector database) failed. Only the error type goes back to the
-            # client; the full message, which can name hosts or users, stays on the trace.
-            log.exception("ask failed")
+            # client and into the log; the full message, which can name hosts or users, stays on
+            # the trace.
+            emit("rag.failed", {"error.type": type(e).__name__[:64]})
             raise HTTPException(status_code=502, detail=f"upstream error: {type(e).__name__}") from e
         span_ctx = trace.get_current_span().get_span_context()
         result["trace_id"] = format(span_ctx.trace_id, "032x") if span_ctx.is_valid else None

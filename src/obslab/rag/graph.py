@@ -23,7 +23,6 @@ conversation. The first question of a conversation skips that call.
 
 from __future__ import annotations
 
-import logging
 import re
 import time
 import uuid
@@ -45,11 +44,11 @@ from opentelemetry.trace import SpanKind
 
 from ..config import Settings
 from ..telemetry.callbacks import OTelCallbackHandler
+from ..telemetry.events import emit
 from ..telemetry.genai import OP, RagMetrics
 from ..telemetry.setup import Telemetry
 from .admission import REASON, Admission, DeadlineExceeded
 
-log = logging.getLogger("obslab.rag")
 MAX_REWRITES = 1
 STOP = set("the a an of to in and or is are was what how why which with for on "
            "de la le les des un une et est que qui pour dans".split())
@@ -297,10 +296,9 @@ class RagApp:
             {**NEW_TURN, "question": question},
             config={"callbacks": [self.handler],
                     "configurable": {"thread_id": conversation_id, "deadline": deadline}}, **saving)
-        log.info("rag answered", extra={"rag.route": state.get("route"), "rag.rewrites": state.get("rewrites", 0),
-                                        "rag.groundedness": state.get("groundedness", 0.0),
-                                        "rag.turn": state.get("turn", 1),
-                                        "gen_ai.conversation.id": conversation_id})
+        emit("rag.answered", {"rag.route": state.get("route", ""), "rag.rewrites": state.get("rewrites", 0),
+                              "rag.groundedness": state.get("groundedness", 0.0), "rag.turn": state.get("turn", 1),
+                              "gen_ai.conversation.id": conversation_id})
         return {"answer": state.get("answer", ""), "route": state.get("route"),
                 "sources": state.get("sources", []), "rewrites": state.get("rewrites", 0),
                 "groundedness": state.get("groundedness", 0.0),

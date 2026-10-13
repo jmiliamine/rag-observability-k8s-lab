@@ -27,17 +27,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 
 from .. import __version__
 from ..config import Settings
+from .events import JsonFormatter
 
 SCOPE = "obslab"
-
-
-class _TraceFormatter(logging.Formatter):
-    """Adds the current trace id (or "-") to stdout log lines."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        ctx = trace.get_current_span().get_span_context()
-        record.trace_id = format(ctx.trace_id, "032x") if ctx.is_valid else "-"
-        return super().format(record)
 
 
 @dataclass
@@ -100,13 +92,13 @@ def init_telemetry(settings: Settings, span_exporter: SpanExporter | None = None
     app_logger = logging.getLogger("obslab")
     app_logger.setLevel(logging.INFO)
     if logger_provider is not None:
-        # OTLP copy of every "obslab.*" log record -> collector -> Loki, with trace/span ids attached.
+        # OTLP copy of every event (telemetry/events.py) -> collector -> Loki, with trace/span ids.
         app_logger.addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
     if settings.log_stdout and not any(getattr(h, "_obslab_stdout", False) for h in app_logger.handlers):
-        # stdout copy for `kubectl logs` / `docker logs`: one line per record, with the trace id so
-        # a line can be pasted into Tempo. Kept even if the collector is down (logs still visible).
+        # stdout copy for `kubectl logs` / `docker logs` / a CI log: one JSON object per event, with
+        # the trace id so a line can be pasted into Tempo. Still there when the collector is down.
         stream = logging.StreamHandler()
-        stream.setFormatter(_TraceFormatter("%(asctime)s %(levelname)s %(name)s trace_id=%(trace_id)s %(message)s"))
+        stream.setFormatter(JsonFormatter(settings.service_name, __version__))
         stream._obslab_stdout = True  # type: ignore[attr-defined]
         app_logger.addHandler(stream)
     if set_global:

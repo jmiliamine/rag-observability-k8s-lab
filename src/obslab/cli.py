@@ -64,25 +64,31 @@ def cmd_ingest(a) -> int:
     from .config import Settings
     from .rag import corpus, pgvector
     from .rag.providers import embeddings
-    from .telemetry import GenAIMetrics, init_telemetry
+    from .telemetry import GenAIMetrics, emit, init_telemetry
     settings = Settings()
     tel = init_telemetry(settings, set_global=True)
+
+    def failed(reason: str, message: str) -> int:
+        emit("ingest.failed", {"obslab.ingest.reason": reason})
+        tel.shutdown()
+        print(message, file=sys.stderr)
+        return 1
     source = Path(a.source)
     if not source.is_dir():
-        print(f"data lake not found: {a.source} is not a folder", file=sys.stderr)
-        return 1
+        return failed("source_missing", f"data lake not found: {a.source} is not a folder")
     docs = corpus.split(corpus.load_folder(source))
     if not docs:        # checked before the database is touched: the current index keeps serving
-        print(f"no .md/.txt notes under {a.source}: the index is left as it is", file=sys.stderr)
-        return 1
+        return failed("no_notes", f"no .md/.txt notes under {a.source}: the index is left as it is")
     meta = {"provider": settings.provider, "embed_model": settings.embed_model_id}
     emb = embeddings(settings, tel, GenAIMetrics(tel.meter))
     start = time.perf_counter()
     with tel.tracer.start_as_current_span("ingest", attributes={"obslab.chunks": len(docs)}):
         with pgvector.open_pool(name="obslab-ingest") as pool:
             pgvector.rebuild(pool, docs, emb, meta)
+        seconds = time.perf_counter() - start
+        emit("ingest.finished", {"obslab.chunks": len(docs), "obslab.duration_s": round(seconds, 2)})
     tel.shutdown()
-    print(f"indexed {len(docs)} chunks in {time.perf_counter() - start:.1f}s -> PostgreSQL (rag.chunks)")
+    print(f"indexed {len(docs)} chunks in {seconds:.1f}s -> PostgreSQL (rag.chunks)")
     return 0
 
 
@@ -144,14 +150,19 @@ def cmd_conversations(a) -> int:
     """Housekeeping of the stored conversations (run daily by a CronJob in the cluster)."""
     from .config import Settings
     from .rag import memory
+    from .telemetry import emit, init_telemetry
     settings = Settings()
+    tel = init_telemetry(settings, set_global=True)     # the job's event reaches Loki like the API's
     store = memory.ConversationStore(memory.open_pool(name="obslab-purge"))
     try:
         days = a.days if a.days is not None else settings.conversation_ttl_days
-        removed = store.purge(days)
-        print(f"purged {removed} conversations idle for more than {days:g} days, {store.count()} left")
+        removed, kept = store.purge(days), store.count()
+        emit("conversations.purged", {"obslab.conversations.removed": removed, "obslab.conversations.kept": kept,
+                                      "obslab.conversations.ttl_days": float(days)})
+        print(f"purged {removed} conversations idle for more than {days:g} days, {kept} left")
     finally:
         store.close()
+        tel.shutdown()
     return 0
 
 
