@@ -31,6 +31,11 @@ updates:
     schedule: {interval: weekly}
     cooldown: {default-days: 7}
     # One pull request per image: the end-to-end job then says which upgrade breaks the stack.
+    # No major version from here: a major of Prometheus, Tempo, Loki or Grafana changes
+    # configuration and is done by hand, with its release notes.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker         # images referenced by the Kubernetes manifests
     directory: /deploy/k8s/app/base
