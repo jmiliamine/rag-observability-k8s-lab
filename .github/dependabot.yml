@@ -30,7 +30,11 @@ updates:
     directory: /deploy/compose
     schedule: {interval: weekly}
     cooldown: {default-days: 7}
-    # One pull request per image: the end-to-end job then says which upgrade breaks the stack.
+    # One pull request for all the images: main requires an up-to-date branch, so one pull request
+    # per image means one rebase and one CI run each. If the group fails, the end-to-end job log
+    # names the container that did not start.
+    groups:
+      compose-images: {patterns: ["*"]}
     # No major version from here: a major of Prometheus, Tempo, Loki or Grafana changes
     # configuration and is done by hand, with its release notes.
     ignore:
