@@ -276,6 +276,17 @@ and the same fields. A field holds a number, an ID or a value from a short list:
 answer text, no exception message (the trace keeps it), no connection string. Tests check the
 list, the JSON line, and that no other module logs or prints, the command-line output aside.
 
+**One log line per request, kept 72 hours, not sampled.** Every request writes exactly one
+event: 531 requests of the load generator gave 531 lines, on the process output and in Loki. As
+a JSON line an answer weighs about 360 bytes and a refusal about 250. One local model answers a
+question in a few seconds, so two replicas write a few tens of megabytes a day at most, before
+compression. Sampling would save little and would leave some requests with no line to find by
+trace ID, so there is none. Refusals are the lines that can multiply, one per refused request:
+at 250 bytes each, the 2 GiB volume of Loki in the cluster holds three days of about 30
+refusals per second, sustained, and the refusal counter (`rag.admission.rejections`) shows such
+a burst long before the disk does. Logs, traces and metrics are all kept 72 hours, in the
+cluster and in the Compose stack.
+
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every
 replica at once; that case shows up as errors and alerts instead.

@@ -171,3 +171,19 @@ def test_published_ports_are_bound_to_localhost():
     compose = (ROOT / "deploy/compose/docker-compose.yml").read_text(encoding="utf-8")
     mappings = re.findall(r'"((?:[\d.]+:)?\d+:\d+)"', compose)
     assert mappings and all(m.startswith("127.0.0.1:") for m in mappings), mappings
+
+
+def test_the_three_signals_are_kept_72_hours_in_both_setups():
+    """Logs, traces and metrics share one retention, so a trace and its log lines expire together."""
+    settings = {
+        "deploy/compose/loki.yaml": "retention_period: 72h",
+        "deploy/compose/tempo.yaml": "block_retention: 72h",
+        "deploy/compose/docker-compose.yml": "--storage.tsdb.retention.time=3d",
+        "deploy/k8s/platform/values/loki.yaml": "retention_period: 72h",
+        "deploy/k8s/platform/values/tempo.yaml": "retention: 72h",
+        "deploy/k8s/platform/values/kube-prometheus-stack.yaml": "retention: 3d",
+    }
+    missing = [path for path, text in settings.items() if text not in (ROOT / path).read_text(encoding="utf-8")]
+    assert not missing, f"retention is not 72 hours in: {missing}"
+    for path in ("deploy/compose/loki.yaml", "deploy/k8s/platform/values/loki.yaml"):
+        assert "retention_enabled: true" in (ROOT / path).read_text(encoding="utf-8"), path

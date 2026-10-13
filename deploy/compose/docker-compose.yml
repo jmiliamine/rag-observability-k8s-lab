@@ -26,7 +26,7 @@ services:
     image: prom/prometheus:v3.15.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.time=3d      # 72 hours for the three signals, as in the cluster
       - --enable-feature=exemplar-storage
       - --web.enable-lifecycle
     volumes:
