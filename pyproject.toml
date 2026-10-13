@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.27", "pytest-socket>=0.7", "ruff>=0.14"]
+dev = ["pytest>=8", "httpx>=0.27", "pytest-socket>=0.7", "ruff>=0.14", "pyyaml>=6"]
 
 [project.scripts]
 obslab = "obslab.cli:main"
