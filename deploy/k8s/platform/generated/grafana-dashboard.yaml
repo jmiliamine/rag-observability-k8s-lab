@@ -622,7 +622,7 @@ data:
         {
           "type": "timeseries",
           "title": "Groundedness",
-          "description": "Share of answer words found in the retrieved context (cheap proxy for an LLM-as-judge score).",
+          "description": "Share of answer words found in the retrieved context. It shows answers drifting away from the notes. It does not show an answer that uses the same words to say the opposite.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

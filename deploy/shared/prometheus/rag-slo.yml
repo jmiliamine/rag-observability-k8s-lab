@@ -43,7 +43,7 @@ groups:
         for: 15m
         labels: {severity: ticket}
         annotations:
-          summary: "{{ $value | humanizePercentage }} of questions found no relevant context — index stale or threshold too strict?"
+          summary: "{{ $value | humanizePercentage }} of questions got I-don't-know (no relevant context, or the model declined) — index stale or threshold too strict?"
       - alert: RagGroundednessLow
         expr: rag:groundedness:p50_15m < 0.5
         for: 15m

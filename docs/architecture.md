@@ -31,7 +31,8 @@ to the Gateway (`obslab.dev/gateway-access=true`).
    If nothing scores above `OBSLAB_MIN_SCORE`, the question is rewritten once, then the
    flow falls back to "I don't know".
 6. Generation streams the answer (`chat llama3.2:3b` span, with time to first chunk and
-   token usage), then a cheap groundedness score is computed.
+   token usage). If the model itself answers that it does not know, the turn is counted as a
+   fallback. Otherwise a cheap groundedness score is computed.
 7. The turn (question and answer) is saved with the conversation, and the API returns the
    answer, its sources, the conversation id and the trace ID.
 
@@ -286,6 +287,20 @@ at 250 bytes each, the 2 GiB volume of Loki in the cluster holds three days of a
 refusals per second, sustained, and the refusal counter (`rag.admission.rejections`) shows such
 a burst long before the disk does. Logs, traces and metrics are all kept 72 hours, in the
 cluster and in the Compose stack.
+
+**The groundedness score measures vocabulary, not correctness.** It is the share of the answer's
+words found in the retrieved notes: free, and the same result every time. It drops when answers
+drift away from the notes. It does not drop when an answer uses the words of the notes to say
+the opposite. On one follow-up question asked 30 times to `llama3.2:3b`, 4 answers contradicted
+the note, and they scored 0.76 to 0.80 while the 23 correct ones averaged 0.69. Asking the same
+model to judge the answer did not help: it approved the contradicting answer 10 times out of 10
+and rejected a correct one 3 times out of 10. So the score keeps its alert as a drift signal,
+and the lab does not claim to detect a wrong answer.
+
+**Every "I don't know" is a fallback.** There are two ways to get one: retrieval finds nothing
+relevant, or chunks are found and the model says they are not enough. Both are counted in
+`rag.fallbacks`, under the reasons `no_relevant_context` and `model_declined`, and both are
+routed as `fallback`, so the fallback rate and its alert see all of them.
 
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every

@@ -104,7 +104,8 @@ ts("Relevant documents per question (avg)", [("sum(rate(rag_retrieval_relevant_d
                                               ("sum(rate(rag_retrieval_documents_sum[$__rate_interval])) / sum(rate(rag_retrieval_documents_count[$__rate_interval]))", "retrieved")],
    "short", 8, 8)
 ts("Groundedness", [(HQ.format(q=q, by="", m="rag_answer_groundedness"), f"p{int(q*100)}") for q in (0.1, 0.5)], "percentunit", 16, 8,
-   desc="Share of answer words found in the retrieved context (cheap proxy for an LLM-as-judge score).")
+   desc="Share of answer words found in the retrieved context. It shows answers drifting away from the notes. "
+        "It does not show an answer that uses the same words to say the opposite.")
 advance()
 ts("Query rewrites & fallbacks / min", [("sum(rate(rag_query_rewrites_total[$__rate_interval])) * 60", "rewrites"),
                                         ("sum(rate(rag_fallbacks_total[$__rate_interval])) * 60", "fallbacks")], "short", 0, 12)
