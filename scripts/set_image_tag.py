@@ -24,7 +24,7 @@ resources:
   - ../{base}
 images:
   - name: obslab-registry.localhost:5001/obslab      # the name set by overlays/local
-    newTag: {tag}
+    newTag: "{tag}"            # quoted: a short commit SHA such as 474e135 is a number in YAML
 """
 
 
