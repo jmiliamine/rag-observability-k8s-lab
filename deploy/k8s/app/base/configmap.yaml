@@ -29,6 +29,8 @@ data:
   # Admission in front of the model (rag/admission.py). One model call at a time per replica and a
   # short waiting line: beyond it a question is refused at once (503) instead of queueing unseen
   # inside the model server. Sizing: queue x typical answer time < deadline < the caller's timeout.
+  # The deadline is an upper bound: a caller can announce a shorter one with X-Request-Timeout.
+  # These limits are per replica (deployment.yaml).
   OBSLAB_MODEL_CONCURRENCY: "1"
   OBSLAB_MODEL_QUEUE: "8"
   OBSLAB_REQUEST_DEADLINE_S: "120"

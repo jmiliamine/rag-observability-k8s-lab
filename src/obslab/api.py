@@ -14,6 +14,9 @@
 - /ask answers 503 when the model's waiting line is full and 504 when the request deadline
   passes (rag/admission.py). The probes do not look at that line: a busy model is not an
   unready pod.
+- A caller can say how long it will wait, in seconds, with the X-Request-Timeout header. The
+  deadline is then the smaller of that value and OBSLAB_REQUEST_DEADLINE_S: nothing is computed
+  for a caller who has already given up.
 - /ask takes an optional conversation_id (returned by the previous answer). The history
   lives in PostgreSQL, so any replica can serve the next question of a conversation.
 """
@@ -22,9 +25,10 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Response
 from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, Field
@@ -79,9 +83,10 @@ def create_app(components: Components) -> FastAPI:
         return body
 
     @app.post("/ask")
-    def ask(body: Ask):
+    def ask(body: Ask, x_request_timeout: Annotated[float | None, Header(ge=1, allow_inf_nan=False)] = None):
         try:
-            result = components.ask(body.question, str(body.conversation_id) if body.conversation_id else None)
+            result = components.ask(body.question, str(body.conversation_id) if body.conversation_id else None,
+                                    deadline_s=x_request_timeout)
         except ConversationTooLongError as e:
             emit("rag.refused", {"rag.refusal.reason": "conversation_too_long"})
             raise HTTPException(status_code=409, detail=f"{e}: start a new conversation") from e

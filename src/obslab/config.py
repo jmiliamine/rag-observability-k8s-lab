@@ -15,6 +15,7 @@ OBSLAB_CONVERSATION_TTL_DAYS  idle conversations older than this are purged, def
 OBSLAB_MODEL_CONCURRENCY model calls running at once in this process, default 1
 OBSLAB_MODEL_QUEUE       model calls allowed to wait behind them, default 8 (more are refused at once)
 OBSLAB_REQUEST_DEADLINE_S  seconds a question may take before it is dropped, default 120
+                         (a caller can announce a shorter time with the X-Request-Timeout header)
 OBSLAB_TOP_K / OBSLAB_MIN_SCORE   retrieval tuning (validated: 1..20 and 0..1)
 OBSLAB_PRICE_IN / OBSLAB_PRICE_OUT  USD per 1M tokens, to chart an "API-equivalent" cost
 OBSLAB_ENVIRONMENT       deployment.environment.name resource attribute (local, k3d, ...)
@@ -70,12 +71,6 @@ class Settings:
             problems.append(f"OBSLAB_TOP_K={self.top_k} (expected 1..{MAX_TOP_K})")
         if not 0.0 <= self.min_score <= 1.0:
             problems.append(f"OBSLAB_MIN_SCORE={self.min_score} (expected 0..1)")
-        if not 0 <= self.history_turns <= 10:
-            problems.append(f"OBSLAB_HISTORY_TURNS={self.history_turns} (expected 0..10)")
-        if not 1 <= self.max_turns <= 200:
-            problems.append(f"OBSLAB_MAX_TURNS={self.max_turns} (expected 1..200)")
-        if self.conversation_ttl_days <= 0:
-            problems.append(f"OBSLAB_CONVERSATION_TTL_DAYS={self.conversation_ttl_days} (expected > 0)")
         if not 0 <= self.history_turns <= 10:
             problems.append(f"OBSLAB_HISTORY_TURNS={self.history_turns} (expected 0..10)")
         if not 1 <= self.max_turns <= 200:

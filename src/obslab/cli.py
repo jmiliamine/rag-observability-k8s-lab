@@ -94,7 +94,8 @@ def cmd_ingest(a) -> int:
 
 def _post_ask(url: str, question: str, host_header: str = "", timeout: float = 180,
               conversation_id: str | None = None) -> dict:
-    headers = {"Content-Type": "application/json"}
+    # The API drops the question once this caller has stopped waiting for it.
+    headers = {"Content-Type": "application/json", "X-Request-Timeout": f"{timeout:g}"}
     if host_header:
         # Behind the cluster Gateway, routing is by Host header (rag.localhost); Windows does
         # not resolve *.localhost, so we hit 127.0.0.1 and send the Host header ourselves.

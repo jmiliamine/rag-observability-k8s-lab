@@ -10,7 +10,7 @@ name: obslab
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0
+    image: otel/opentelemetry-collector-contrib:0.162.0
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
@@ -53,7 +53,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: pgvector/pgvector:0.8.6-pg18-trixie
+    image: pgvector/pgvector:0.8.7-pg18-trixie
     environment:
       POSTGRES_DB: obslab
       POSTGRES_USER: postgres

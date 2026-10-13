@@ -233,9 +233,28 @@ up still gets answered. So each replica lets `OBSLAB_MODEL_CONCURRENCY` model ca
 has `OBSLAB_REQUEST_DEADLINE_S` in total: still waiting at that point it is dropped before the
 model is asked, and an answer still being written is cut by closing the stream (504). The wait
 is its own number, on the node span (`rag.admission.wait_s`) and in `rag.admission.wait`, next
-to the model's execution time. Sizing rule: queue x typical answer time < deadline < the
-caller's timeout. The bound is per replica, not global: two replicas admit twice as much. The
-probes are unchanged, since a busy model is not an unready pod.
+to the model's execution time. The probes are unchanged, since a busy model is not an unready
+pod.
+
+**The caller says how long it will wait.** A fixed deadline is either too long for an impatient
+caller or too short for the first question after a cold start. So a caller can send
+`X-Request-Timeout`, in seconds, and the deadline of that question is the smaller of this value
+and `OBSLAB_REQUEST_DEADLINE_S`. The server value stays the upper bound; a value that is not a
+number of at least one second is a 422. The command-line client sends its own timeout. The
+deadline in use is on the request span (`rag.request.deadline_s`). Sizing rule for a caller that
+sends nothing: queue x typical answer time < deadline < the caller's timeout.
+
+**The bound stays per replica.** Two replicas admit twice as much in front of one model. A
+shared limit would need a round trip to PostgreSQL for every model call, and a slot held by a
+replica that crashed would have to expire. With a fixed number of replicas the per-replica value
+is simply set with that number in mind (`deployment.yaml`, `configmap.yaml`); to be revisited if
+the API is ever scaled automatically.
+
+**A caller that disconnects is not detected.** `/ask` is a synchronous endpoint and the deadline
+is its only way out. An asynchronous endpoint would free the model as soon as the connection
+closes, at the price of moving the graph, the database calls and the telemetry context to async.
+A caller that announces its timeout is already never served beyond it, which covers most of the
+case for much less.
 
 **Logs are events, defined in one file.** Metric and span names live in one module; log lines
 get the same treatment in `telemetry/events.py`. A line is an event with a fixed name and a fixed

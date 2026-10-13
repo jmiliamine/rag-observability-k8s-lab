@@ -3,6 +3,9 @@
 # Stateless: the vector index lives in PostgreSQL (postgres.yaml), so replicas are
 # interchangeable. Two of them, spread over the nodes, plus a PodDisruptionBudget (pdb.yaml):
 # a rollout or a `kubectl drain` never takes the API down.
+#
+# Each replica admits OBSLAB_MODEL_CONCURRENCY model calls (configmap.yaml): changing the number
+# of replicas changes what reaches the model.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
