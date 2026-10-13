@@ -172,6 +172,80 @@ def test_an_answer_still_being_written_at_the_deadline_is_cut(otel, store):
     assert {p.attributes["rag.admission.reason"]: p.value for p in got["rag.admission.rejections"]} == {"deadline": 1}
 
 
+def test_a_caller_that_announces_its_timeout_is_not_served_after_it(otel, store):
+    components, spans, reader = _app(otel, store, request_deadline_s=30)
+    components.rag.llm = SlowChat(chunk_s=0.1, started=[], chunks_sent=[])       # a full answer takes 4 s
+    start = time.monotonic()
+    reply = TestClient(create_app(components)).post("/ask", json={"question": QUESTION},
+                                                    headers={"X-Request-Timeout": "1"})
+
+    assert reply.status_code == 504 and time.monotonic() - start < 3       # cut at 1 s, not at the server's 30
+    assert 0 < len(components.rag.llm.chunks_sent) < 40
+    got = metrics_by_name(reader)
+    assert {p.attributes["rag.admission.reason"]: p.value for p in got["rag.admission.rejections"]} == {"deadline": 1}
+    assert spans_by_name(spans)["POST /ask"].attributes["rag.request.deadline_s"] == 1
+
+
+def test_a_caller_waiting_behind_a_busy_model_is_dropped_at_its_own_timeout(otel, store):
+    components, _, _ = _app(otel, store, model_concurrency=1, model_queue=4, request_deadline_s=30)
+    components.rag.llm = SlowChat(chunk_s=0.005, started=[], chunks_sent=[])
+    client = TestClient(create_app(components))
+    busy = threading.Event()
+
+    def hold_the_model():
+        with components.rag.admission.slot("generate"):
+            busy.set()
+            time.sleep(2.0)
+    holder = threading.Thread(target=hold_the_model)
+    holder.start()
+    busy.wait(2)
+    reply = client.post("/ask", json={"question": QUESTION}, headers={"X-Request-Timeout": "1"})
+    holder.join(5)
+
+    assert reply.status_code == 504
+    assert components.rag.llm.started == []                    # the model was never asked for this caller
+
+
+def test_the_server_deadline_stays_the_upper_bound(otel, store):
+    components, spans, _ = _app(otel, store, request_deadline_s=1)
+    components.rag.llm = SlowChat(chunk_s=0.1, started=[], chunks_sent=[])
+    reply = TestClient(create_app(components)).post("/ask", json={"question": QUESTION},
+                                                    headers={"X-Request-Timeout": "600"})
+    assert reply.status_code == 504                            # a patient caller does not extend the limit
+    assert spans_by_name(spans)["POST /ask"].attributes["rag.request.deadline_s"] == 1
+
+
+@pytest.mark.parametrize("value", ["soon", "0", "-5", "0.5", "nan", "inf"])
+def test_an_invalid_announced_timeout_is_refused_before_any_work(otel, store, value):
+    components, _, _ = _app(otel, store)
+    components.rag.llm = SlowChat(chunk_s=0.005, started=[], chunks_sent=[])
+    reply = TestClient(create_app(components)).post("/ask", json={"question": QUESTION},
+                                                    headers={"X-Request-Timeout": value})
+    assert reply.status_code == 422 and components.rag.llm.started == []
+
+
+def test_without_an_announced_timeout_the_server_deadline_applies(otel, store):
+    components, spans, _ = _app(otel, store, request_deadline_s=45)
+    assert TestClient(create_app(components)).post("/ask", json={"question": QUESTION}).status_code == 200
+    assert spans_by_name(spans)["POST /ask"].attributes["rag.request.deadline_s"] == 45
+
+
+def test_the_command_line_client_announces_its_timeout(monkeypatch):
+    import io
+    import json
+    import urllib.request
+
+    from obslab import cli
+    sent = {}
+
+    def fake_urlopen(req, timeout):
+        sent.update(headers=dict(req.header_items()), timeout=timeout)
+        return io.BytesIO(json.dumps({"answer": "ok"}).encode())
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    cli._post_ask("http://api.test", QUESTION, timeout=20)
+    assert sent["timeout"] == 20 and sent["headers"]["X-request-timeout"] == "20"
+
+
 def test_a_refused_question_leaves_the_conversation_untouched(otel, store):
     components, _, _ = _app(otel, store, model_concurrency=1, model_queue=0)
     first = components.ask(QUESTION)

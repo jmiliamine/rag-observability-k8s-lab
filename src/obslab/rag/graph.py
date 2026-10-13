@@ -281,14 +281,18 @@ class RagApp:
         g.add_edge("fallback", END)
         return g.compile(name="rag", checkpointer=checkpointer)
 
-    def ask(self, question: str, graph=None, conversation_id: str | None = None) -> dict[str, Any]:
+    def ask(self, question: str, graph=None, conversation_id: str | None = None,
+            deadline_s: float | None = None) -> dict[str, Any]:
         """One turn. Without `conversation_id` a new conversation starts; its id is returned so
-        that the next question can continue it."""
+        that the next question can continue it. `deadline_s` is how long the caller says it will
+        wait; the server's own limit stays the upper bound."""
         graph = graph or self.build()
         conversation_id = conversation_id or str(uuid.uuid4())
         # One checkpoint per turn, written when the run succeeds (instead of one per node).
         saving = {"durability": "exit"} if graph.checkpointer else {}
-        deadline = time.monotonic() + self.settings.request_deadline_s
+        budget = min(deadline_s or self.settings.request_deadline_s, self.settings.request_deadline_s)
+        deadline = time.monotonic() + budget
+        trace.get_current_span().set_attribute("rag.request.deadline_s", budget)   # on the request span
         state = graph.invoke(
             {**NEW_TURN, "question": question},
             config={"callbacks": [self.handler],

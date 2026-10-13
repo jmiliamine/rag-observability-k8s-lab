@@ -28,10 +28,10 @@ class Components:
     graph: object
     conversations: BaseCheckpointSaver | None = None
 
-    def ask(self, question: str, conversation_id: str | None = None):
+    def ask(self, question: str, conversation_id: str | None = None, deadline_s: float | None = None):
         if isinstance(self.conversations, memory.ConversationStore):
             self.conversations.ensure_tables()
-        return self.rag.ask(question, self.graph, conversation_id)
+        return self.rag.ask(question, self.graph, conversation_id, deadline_s)
 
     def status(self) -> dict:
         """What /readyz reports. The vector store is checked on every call: the index can be

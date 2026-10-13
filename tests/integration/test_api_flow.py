@@ -33,6 +33,16 @@ def test_ask_produces_one_trace_rooted_at_http_span(components, otel):
     assert "gen_ai.client.operation.duration" in got
 
 
+def test_an_announced_timeout_reaches_the_request_span(components, otel):
+    _, spans, _ = otel
+    client = TestClient(create_app(components))
+    r = client.post("/ask", json={"question": "What does cosine similarity measure?"},
+                    headers={"X-Request-Timeout": "20"})
+    assert r.status_code == 200, r.text
+    server = next(s for s in spans.get_finished_spans() if s.name == "POST /ask")
+    assert server.attributes["rag.request.deadline_s"] == 20
+
+
 def test_validation_and_provider_errors(components, otel):
     _, spans, _ = otel
     client = TestClient(create_app(components))

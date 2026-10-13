@@ -23,6 +23,13 @@ def test_invalid_settings_fail_at_startup(kwargs, message):
         Settings(**kwargs)
 
 
+def test_each_invalid_setting_is_reported_once():
+    with pytest.raises(ValueError) as error:
+        Settings(history_turns=99, max_turns=0, conversation_ttl_days=0)
+    for name in ("OBSLAB_HISTORY_TURNS", "OBSLAB_MAX_TURNS", "OBSLAB_CONVERSATION_TTL_DAYS"):
+        assert str(error.value).count(name) == 1
+
+
 class BrokenStore(PgVectorStore):
     """A pgvector store whose database is down; errors carry connection details on purpose."""
 
