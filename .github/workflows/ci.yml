@@ -22,8 +22,10 @@ on:
 permissions: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # A newer push replaces the run of a pull request; runs on main always finish.
+  # One group per pull request: a newer push replaces its run. One group per commit elsewhere:
+  # a group keeps one waiting run only, so two merges a minute apart on a shared `main` group
+  # would cancel the first one's run before it starts.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

@@ -21,8 +21,10 @@ on:
 permissions: {}
 
 concurrency:
-  group: real-model-${{ github.ref }}
-  cancel-in-progress: false   # every state of main gets its verdict
+  # One group per commit: every state of main gets its verdict, even when two merges land a
+  # minute apart (a shared group keeps one waiting run only and cancels the others).
+  group: real-model-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   UV_LOCKED: "1"
