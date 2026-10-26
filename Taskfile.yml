@@ -140,8 +140,10 @@ tasks:
       - kubectl apply -f deploy/k8s/platform/traefik-gateway.yaml
       # k3s installs Traefik asynchronously, in two Jobs. Only the first one is awaited here: it
       # brings the Gateway API CRDs that the next steps apply. Traefik itself starts in the
-      # background and is checked by `platform:wait`.
-      - kubectl -n kube-system wait --for=condition=complete job/helm-install-traefik-crd --timeout=300s
+      # background and is checked by `platform:wait`. The Job is created a few seconds after the
+      # cluster starts: `--for=create` waits for it to exist (kubectl >= 1.31), otherwise `wait`
+      # fails at once with NotFound.
+      - kubectl -n kube-system wait --for=create --for=condition=complete job/helm-install-traefik-crd --timeout=300s
 
   stop:
     desc: Stop the cluster containers (frees ~4 GB RAM, keeps all data)
