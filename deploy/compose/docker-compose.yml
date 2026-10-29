@@ -10,7 +10,7 @@ name: obslab
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.162.0
+    image: otel/opentelemetry-collector-contrib:0.163.2-386
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=3d      # 72 hours for the three signals, as in the cluster
@@ -37,7 +37,7 @@ services:
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:3.1.0
+    image: grafana/tempo:3.1.1
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.7.8
+    image: grafana/loki:3.7.9
     command: ["-config.file=/etc/loki/config.yaml"]
     volumes:
       - ./loki.yaml:/etc/loki/config.yaml:ro
