@@ -586,13 +586,229 @@
     },
     {
       "type": "row",
-      "title": "Retrieval & answer quality",
+      "title": "Host GPU and model server (task host:metrics)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 39
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU memory",
+      "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. Other programs = used minus Ollama's share: on a laptop, the browser or the desktop can push the model out of GPU memory.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(hw_gpu_memory_limit_bytes)",
+          "legendFormat": "total",
+          "refId": "A",
+          "exemplar": true
+        },
+        {
+          "expr": "sum(hw_gpu_memory_usage_bytes)",
+          "legendFormat": "used",
+          "refId": "B",
+          "exemplar": true
+        },
+        {
+          "expr": "sum(obslab_ollama_model_vram_bytes)",
+          "legendFormat": "Ollama models",
+          "refId": "C",
+          "exemplar": true
+        },
+        {
+          "expr": "sum(hw_gpu_memory_usage_bytes) - (sum(obslab_ollama_model_vram_bytes) or vector(0))",
+          "legendFormat": "other programs",
+          "refId": "D",
+          "exemplar": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU busy and temperature",
+      "description": "Host value, sent by `task host:metrics`: empty when the poller is not running.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(hw_gpu_utilization_ratio)",
+          "legendFormat": "busy",
+          "refId": "A",
+          "exemplar": true
+        },
+        {
+          "expr": "max(obslab_host_gpu_temperature_celsius) / 100",
+          "legendFormat": "temperature / 100 \u00b0C",
+          "refId": "B",
+          "exemplar": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Model part running on the CPU",
+      "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. Above 0: the model did not fit in GPU memory and answers slow down a lot.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "sum(obslab_ollama_model_size_bytes - obslab_ollama_model_vram_bytes)",
+          "legendFormat": "on CPU",
+          "refId": "A",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Models loaded in Ollama",
+      "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. 0: the next question pays a cold load (time to first chunk spikes).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "max(obslab_ollama_models_loaded)",
+          "legendFormat": "loaded",
+          "refId": "A",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Host poller reporting",
+      "description": "0: no host values. Run `task host:metrics` on the host.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "count(hw_gpu_memory_limit_bytes) or count(obslab_ollama_models_loaded) or vector(0)",
+          "legendFormat": "series",
+          "refId": "A",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Retrieval & answer quality",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 56
       }
     },
     {
@@ -607,7 +823,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 40
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {
@@ -654,7 +870,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 40
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {
@@ -695,7 +911,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 40
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {
@@ -736,7 +952,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 48
+        "y": 65
       },
       "fieldConfig": {
         "defaults": {
@@ -776,7 +992,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 48
+        "y": 65
       },
       "targets": [
         {
@@ -797,7 +1013,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 73
       }
     },
     {
@@ -812,7 +1028,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 57
+        "y": 74
       },
       "fieldConfig": {
         "defaults": {
@@ -853,7 +1069,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 57
+        "y": 74
       },
       "fieldConfig": {
         "defaults": {
@@ -894,7 +1110,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 57
+        "y": 74
       },
       "fieldConfig": {
         "defaults": {
@@ -931,7 +1147,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 65
+        "y": 82
       }
     },
     {
@@ -946,7 +1162,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 66
+        "y": 83
       },
       "fieldConfig": {
         "defaults": {
@@ -987,7 +1203,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 66
+        "y": 83
       },
       "fieldConfig": {
         "defaults": {
@@ -1022,7 +1238,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 66
+        "y": 83
       },
       "fieldConfig": {
         "defaults": {
@@ -1057,7 +1273,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 74
+        "y": 91
       },
       "fieldConfig": {
         "defaults": {

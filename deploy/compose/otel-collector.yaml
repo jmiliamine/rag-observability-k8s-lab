@@ -35,6 +35,7 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     enable_open_metrics: true              # exemplars (metric -> trace links)
+    metric_expiration: 1m                  # same as the cluster: a stopped sender shows as no data
     resource_constant_labels:
       included: ["*"]                      # resource attributes (service.name...) become labels
   otlp_grpc/tempo:
