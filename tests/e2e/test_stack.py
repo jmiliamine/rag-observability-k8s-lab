@@ -114,6 +114,13 @@ def test_admission_wait_reaches_prometheus(asked):
     assert res and float(res[0]["value"][1]) >= 1, "no admission wait recorded for the model calls of this run"
 
 
+def test_the_oldest_question_in_flight_reaches_prometheus(asked):
+    # An observable gauge: exported at every interval, 0 once the questions of this run are done.
+    q = urllib.parse.quote(f'max(rag_request_oldest_age_seconds{{instance="{RUN_ID}"}})')
+    res = _poll(lambda: request(f"{PROM}/api/v1/query?query={q}")["data"]["result"])
+    assert res, "no rag.request.oldest.age series for this run"
+
+
 def test_trace_reaches_tempo(asked):
     _, trace_id = asked
 

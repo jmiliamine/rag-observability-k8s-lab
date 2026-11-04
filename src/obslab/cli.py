@@ -166,6 +166,33 @@ def cmd_conversations(a) -> int:
     return 0
 
 
+def cmd_host_metrics(a) -> int:
+    """GPU and Ollama readings from the host, sent to the collector until Ctrl+C (telemetry/host.py)."""
+    import dataclasses
+
+    from .config import Settings
+    from .telemetry import init_telemetry
+    from .telemetry.genai import HostMetrics
+    from .telemetry.host import HostSampler, read_gpus
+    # A fixed identity: these values become labels, and they describe the host, not a replica.
+    os.environ.setdefault("OTEL_RESOURCE_ATTRIBUTES", "host.name=lab-host")
+    settings = dataclasses.replace(Settings(), service_name="obslab-host")
+    tel = init_telemetry(settings, set_global=True)
+    HostMetrics(tel.meter, HostSampler(settings.ollama_url))
+    gpus = read_gpus()
+    print(f"host metrics -> {settings.otlp_endpoint} every 10 s: "
+          f"{len(gpus)} GPU(s){'' if gpus else ' (nvidia-smi not found or no GPU: GPU values skipped)'}, "
+          f"Ollama at {settings.ollama_url}. Ctrl+C to stop.", flush=True)
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        tel.shutdown()
+    return 0
+
+
 def cmd_serve(a) -> int:
     import uvicorn
 
@@ -241,6 +268,9 @@ def main(argv=None) -> int:
     s.add_argument("--days", type=float, default=None,
                    help="delete conversations idle for more than this (default: OBSLAB_CONVERSATION_TTL_DAYS)")
     s.set_defaults(fn=cmd_conversations)
+
+    s = sub.add_parser("host-metrics", help="send the host's GPU and Ollama readings to the collector")
+    s.set_defaults(fn=cmd_host_metrics)
 
     s = sub.add_parser("serve")
     s.add_argument("--host", default="127.0.0.1")

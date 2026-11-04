@@ -55,3 +55,26 @@ spec:
           labels: {severity: ticket}
           annotations:
             summary: "Median groundedness {{ $value }} — answers drift away from retrieved context"
+        # 96 s = 0.8 x the default request deadline (120 s). Silent when the series is absent.
+        - alert: RagRequestStuck
+          expr: max(rag_request_oldest_age_seconds) > 96
+          for: 2m
+          labels: {severity: ticket}
+          annotations:
+            summary: "A question has been running for {{ $value | humanizeDuration }}, close to the request deadline"
+            runbook: "docs/troubleshooting.md, section A question is stuck"
+        # Host alerts: silent when the host poller is not running (no series, no alert).
+        - alert: HostGpuMemoryHigh
+          expr: max(hw_gpu_memory_usage_bytes / hw_gpu_memory_limit_bytes) > 0.9
+          for: 5m
+          labels: {severity: ticket}
+          annotations:
+            summary: "GPU memory {{ $value | humanizePercentage }} used: the model may be pushed out of it"
+            runbook: "docs/troubleshooting.md, section GPU memory is almost full"
+        - alert: ModelPartlyOnCpu
+          expr: sum(obslab_ollama_model_size_bytes - obslab_ollama_model_vram_bytes) > 0
+          for: 5m
+          labels: {severity: ticket}
+          annotations:
+            summary: "{{ $value | humanize1024 }}B of a loaded model run on the CPU: answers are much slower"
+            runbook: "docs/troubleshooting.md, section GPU memory is almost full"

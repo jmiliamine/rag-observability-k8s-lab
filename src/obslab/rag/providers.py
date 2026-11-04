@@ -175,7 +175,16 @@ def chat_model(settings: Settings) -> BaseChatModel:
     if settings.provider == "fake":
         return FakeChat(model_name="fake-chat")
     from langchain_ollama import ChatOllama
-    return ChatOllama(model=settings.chat_model, base_url=settings.ollama_url, temperature=0.1)
+    return ChatOllama(model=settings.chat_model, base_url=settings.ollama_url, temperature=0.1,
+                      client_kwargs={"timeout": model_timeout(settings)})
+
+
+def model_timeout(settings: Settings):
+    """How long the Ollama clients wait for a byte. The request deadline is checked between two
+    chunks; a model that sends nothing at all would hold the request, and its admission slot,
+    forever without this. It bounds a silence, not an answer: a slow model still streams."""
+    import httpx
+    return httpx.Timeout(settings.model_read_timeout_s, connect=5.0)
 
 
 def embeddings(settings: Settings, telemetry: Telemetry, genai: GenAIMetrics) -> Embeddings:
@@ -184,6 +193,7 @@ def embeddings(settings: Settings, telemetry: Telemetry, genai: GenAIMetrics) ->
         provider, model = "obslab.fake", "fake-embed"
     else:
         from langchain_ollama import OllamaEmbeddings
-        inner = OllamaEmbeddings(model=settings.embed_model, base_url=settings.ollama_url)
+        inner = OllamaEmbeddings(model=settings.embed_model, base_url=settings.ollama_url,
+                                 client_kwargs={"timeout": model_timeout(settings)})
         provider, model = "ollama", settings.embed_model
     return InstrumentedEmbeddings(inner, telemetry, genai, provider, model)

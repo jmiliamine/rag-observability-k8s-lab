@@ -282,6 +282,13 @@ tasks:
     interactive: true
     cmds: ['{{.PY}} -m obslab chat --url http://127.0.0.1:8080 --host-header rag.localhost:8080']
 
+  host:metrics:
+    desc: Send the host GPU and Ollama memory readings to the cluster's collector, until Ctrl+C
+    interactive: true
+    env:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318    # the collector port the cluster publishes
+    cmds: ['{{.PY}} -m obslab host-metrics']
+
   load:
     desc: Send traffic to the deployed RAG to feed the dashboards (N=30; CONCURRENCY=12 sends a burst)
     cmds: ['{{.PY}} -m obslab load --url http://127.0.0.1:8080 --host-header rag.localhost:8080 --n {{.N | default 30}} --concurrency {{.CONCURRENCY | default 1}}']

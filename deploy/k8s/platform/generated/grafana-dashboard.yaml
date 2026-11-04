@@ -521,6 +521,298 @@ data:
           ]
         },
         {
+          "type": "timeseries",
+          "title": "Time per output chunk (p50 / p95)",
+          "description": "Pace of an answer once it has started: the time between two streamed chunks. It rises when the model runs partly on the CPU or the GPU is shared. Long answers weigh more than short ones.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 31
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(gen_ai_client_operation_time_per_output_chunk_seconds_bucket[$__rate_interval])))",
+              "legendFormat": "p50",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_time_per_output_chunk_seconds_bucket[$__rate_interval])))",
+              "legendFormat": "p95",
+              "refId": "B",
+              "exemplar": true
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests in flight (HTTP)",
+          "description": "HTTP requests being served right now, all replicas together, probes included.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 31
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(http_server_active_requests)",
+              "legendFormat": "in flight",
+              "refId": "A",
+              "exemplar": true
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "Host GPU and model server (task host:metrics)",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 39
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "GPU memory",
+          "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. Other programs = used minus Ollama's share: on a laptop, the browser or the desktop can push the model out of GPU memory.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 40
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(hw_gpu_memory_limit_bytes)",
+              "legendFormat": "total",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "sum(hw_gpu_memory_usage_bytes)",
+              "legendFormat": "used",
+              "refId": "B",
+              "exemplar": true
+            },
+            {
+              "expr": "sum(obslab_ollama_model_vram_bytes)",
+              "legendFormat": "Ollama models",
+              "refId": "C",
+              "exemplar": true
+            },
+            {
+              "expr": "sum(hw_gpu_memory_usage_bytes) - (sum(obslab_ollama_model_vram_bytes) or vector(0))",
+              "legendFormat": "other programs",
+              "refId": "D",
+              "exemplar": true
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "GPU busy and temperature",
+          "description": "Host value, sent by `task host:metrics`: empty when the poller is not running.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 40
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "max(hw_gpu_utilization_ratio)",
+              "legendFormat": "busy",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "max(obslab_host_gpu_temperature_celsius) / 100",
+              "legendFormat": "temperature / 100 \u00b0C",
+              "refId": "B",
+              "exemplar": true
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Model part running on the CPU",
+          "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. Above 0: the model did not fit in GPU memory and answers slow down a lot.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 48
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "sum(obslab_ollama_model_size_bytes - obslab_ollama_model_vram_bytes)",
+              "legendFormat": "on CPU",
+              "refId": "A",
+              "exemplar": false
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Models loaded in Ollama",
+          "description": "Host value, sent by `task host:metrics`: empty when the poller is not running. 0: the next question pays a cold load (time to first chunk spikes).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 48
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "max(obslab_ollama_models_loaded)",
+              "legendFormat": "loaded",
+              "refId": "A",
+              "exemplar": false
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Host poller reporting",
+          "description": "0: no host values. Run `task host:metrics` on the host.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 48
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value"
+          },
+          "targets": [
+            {
+              "expr": "count(hw_gpu_memory_limit_bytes) or count(obslab_ollama_models_loaded) or vector(0)",
+              "legendFormat": "series",
+              "refId": "A",
+              "exemplar": false
+            }
+          ]
+        },
+        {
           "type": "row",
           "title": "Retrieval & answer quality",
           "collapsed": false,
@@ -528,7 +820,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 31
+            "y": 56
           }
         },
         {
@@ -543,7 +835,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 32
+            "y": 57
           },
           "fieldConfig": {
             "defaults": {
@@ -590,7 +882,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 32
+            "y": 57
           },
           "fieldConfig": {
             "defaults": {
@@ -631,7 +923,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 32
+            "y": 57
           },
           "fieldConfig": {
             "defaults": {
@@ -672,7 +964,7 @@ data:
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 40
+            "y": 65
           },
           "fieldConfig": {
             "defaults": {
@@ -712,7 +1004,7 @@ data:
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 40
+            "y": 65
           },
           "targets": [
             {
@@ -733,7 +1025,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 48
+            "y": 73
           }
         },
         {
@@ -748,7 +1040,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 49
+            "y": 74
           },
           "fieldConfig": {
             "defaults": {
@@ -789,7 +1081,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 49
+            "y": 74
           },
           "fieldConfig": {
             "defaults": {
@@ -830,7 +1122,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 49
+            "y": 74
           },
           "fieldConfig": {
             "defaults": {
@@ -867,7 +1159,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 57
+            "y": 82
           }
         },
         {
@@ -882,7 +1174,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 58
+            "y": 83
           },
           "fieldConfig": {
             "defaults": {
@@ -923,7 +1215,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 58
+            "y": 83
           },
           "fieldConfig": {
             "defaults": {
@@ -958,7 +1250,7 @@ data:
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 58
+            "y": 83
           },
           "fieldConfig": {
             "defaults": {
@@ -977,6 +1269,47 @@ data:
               "expr": "sum by (rag_admission_reason) (rate(rag_admission_rejections_total[$__rate_interval])) * 60",
               "legendFormat": "{{rag_admission_reason}}",
               "refId": "A",
+              "exemplar": true
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Oldest question in flight",
+          "description": "Age of the oldest question still being answered, worst replica. 0 when idle. A question should end before OBSLAB_REQUEST_DEADLINE_S; one that stays above the threshold is stuck (alert RagRequestStuck).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 91
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "max(rag_request_oldest_age_seconds)",
+              "legendFormat": "oldest",
+              "refId": "A",
+              "exemplar": true
+            },
+            {
+              "expr": "vector(96)",
+              "legendFormat": "alert threshold",
+              "refId": "B",
               "exemplar": true
             }
           ]

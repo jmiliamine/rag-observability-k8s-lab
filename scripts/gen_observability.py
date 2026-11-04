@@ -61,6 +61,9 @@ def advance(h: int = 8) -> None:
     y += h
 
 
+# 0.8 x the default request deadline (OBSLAB_REQUEST_DEADLINE_S = 120): same value as RagRequestStuck.
+STUCK_AFTER_S = 96
+
 HQ = "histogram_quantile({q}, sum by (le{by}) (rate({m}_bucket[$__rate_interval])))"
 
 row("Service health (RED)")
@@ -95,6 +98,34 @@ ts("API-equivalent cost (last 24h)", [("sum(increase(obslab_llm_cost_usd_total[2
 ts("Model errors / s by type", [("sum by (error_type) (rate(gen_ai_client_operation_duration_seconds_count{error_type!=\"\"}[$__rate_interval]))",
                                  "{{error_type}}"),
                                 ("vector(0)", "no error")], "reqps", 16, 8)
+advance()
+ts("Time per output chunk (p50 / p95)", [(HQ.format(q=q, by="", m="gen_ai_client_operation_time_per_output_chunk_seconds"),
+                                          f"p{int(q*100)}") for q in (0.5, 0.95)], "s", 0, 12,
+   desc="Pace of an answer once it has started: the time between two streamed chunks. It rises when the "
+        "model runs partly on the CPU or the GPU is shared. Long answers weigh more than short ones.")
+ts("Requests in flight (HTTP)", [("sum(http_server_active_requests)", "in flight")], "short", 12, 12,
+   desc="HTTP requests being served right now, all replicas together, probes included.")
+advance()
+
+row("Host GPU and model server (task host:metrics)")
+HOST = "Host value, sent by `task host:metrics`: empty when the poller is not running."
+ts("GPU memory", [("sum(hw_gpu_memory_limit_bytes)", "total"), ("sum(hw_gpu_memory_usage_bytes)", "used"),
+                  ("sum(obslab_ollama_model_vram_bytes)", "Ollama models"),
+                  ("sum(hw_gpu_memory_usage_bytes) - (sum(obslab_ollama_model_vram_bytes) or vector(0))",
+                   "other programs")], "bytes", 0, 12,
+   desc=HOST + " Other programs = used minus Ollama's share: on a laptop, the browser or the desktop can push "
+               "the model out of GPU memory.")
+ts("GPU busy and temperature", [("max(hw_gpu_utilization_ratio)", "busy"),
+                                ("max(obslab_host_gpu_temperature_celsius) / 100", "temperature / 100 °C")],
+   "percentunit", 12, 12, desc=HOST)
+advance()
+ts("Model part running on the CPU", [("sum(obslab_ollama_model_size_bytes - obslab_ollama_model_vram_bytes)", "on CPU")],
+   "bytes", 0, 8, kind="stat",
+   desc=HOST + " Above 0: the model did not fit in GPU memory and answers slow down a lot.")
+ts("Models loaded in Ollama", [("max(obslab_ollama_models_loaded)", "loaded")], "short", 8, 8, kind="stat",
+   desc=HOST + " 0: the next question pays a cold load (time to first chunk spikes).")
+ts("Host poller reporting", [("count(hw_gpu_memory_limit_bytes) or count(obslab_ollama_models_loaded) or vector(0)", "series")],
+   "short", 16, 8, kind="stat", desc="0: no host values. Run `task host:metrics` on the host.")
 advance()
 
 row("Retrieval & answer quality")
@@ -147,6 +178,11 @@ ts("Requests dropped / min, by reason", [
    desc="queue_full: refused at once, the waiting line was full (HTTP 503). "
         "deadline: dropped after OBSLAB_REQUEST_DEADLINE_S (HTTP 504).")
 advance()
+ts("Oldest question in flight", [("max(rag_request_oldest_age_seconds)", "oldest"),
+                                 (f"vector({STUCK_AFTER_S})", "alert threshold")], "s", 0, 24, h=6,
+   desc="Age of the oldest question still being answered, worst replica. 0 when idle. A question should end "
+        "before OBSLAB_REQUEST_DEADLINE_S; one that stays above the threshold is stuck (alert RagRequestStuck).")
+advance(6)
 
 dashboard = {
     "uid": "obslab-rag", "title": "LLM / RAG overview", "tags": ["llm", "rag", "opentelemetry"],

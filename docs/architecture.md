@@ -112,10 +112,11 @@ What protects the index:
 
 | Signal | Examples | Where |
 |---|---|---|
-| GenAI metrics | `gen_ai.client.operation.duration`, `gen_ai.client.inference.usage.{input,output}_tokens`, time to first chunk | Prometheus |
-| RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests | Prometheus |
+| GenAI metrics | `gen_ai.client.operation.duration`, `gen_ai.client.inference.usage.{input,output}_tokens`, time to first chunk, time per output chunk | Prometheus |
+| RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests, oldest question in flight | Prometheus |
 | HTTP metrics | `http.server.request.duration` (stable semantic conventions) | Prometheus |
 | Traces | one tree per question, GenAI attributes on each model call, a database span per vector query | Tempo |
+| Host | GPU memory, use and temperature; memory of each loaded Ollama model and its part on the GPU (`task host:metrics`) | Prometheus |
 | Logs | named events with fixed fields (answer, refusal, failure, ingest, purge, start, stop), each with its trace ID | Loki, and the container output |
 
 Metric labels are bounded (operation, model, node, reason, error type). Prompts and answers
@@ -294,13 +295,45 @@ drift away from the notes. It does not drop when an answer uses the words of the
 the opposite. On one follow-up question asked 30 times to `llama3.2:3b`, 4 answers contradicted
 the note, and they scored 0.76 to 0.80 while the 23 correct ones averaged 0.69. Asking the same
 model to judge the answer did not help: it approved the contradicting answer 10 times out of 10
-and rejected a correct one 3 times out of 10. So the score keeps its alert as a drift signal,
-and the lab does not claim to detect a wrong answer.
+and rejected a correct one 3 times out of 10. A second attempt, with the claim-by-claim method
+of the hosted grounding checks (list the claims, label each supported, contradicted or not
+mentioned) at temperature 0, on the 28 labelled answers: it flagged 4 of the 5 wrong answers,
+and also 14 of the 23 correct ones. The bar fixed before the run was 4 caught with at most 2
+false alarms. A 3-billion-parameter model is not a usable judge here, with either method. So
+the score keeps its alert as a drift signal, no judge runs at request time, and the lab does not
+claim to detect a wrong answer. A dedicated grounding model would be an offline evaluation, not
+a runtime check: at about 5 GB it does not fit next to the answering model on a laptop GPU.
 
 **Every "I don't know" is a fallback.** There are two ways to get one: retrieval finds nothing
 relevant, or chunks are found and the model says they are not enough. Both are counted in
 `rag.fallbacks`, under the reasons `no_relevant_context` and `model_declined`, and both are
 routed as `fallback`, so the fallback rate and its alert see all of them.
+
+**Serving signals: what the lab measures, and what Ollama does not show.** Measured, from the
+client side: time to first chunk, time per output chunk (the pace of an answer once it has
+started), questions in flight and the age of the oldest one, the waiting line in front of the
+model. A model that stops sending is cut after `OBSLAB_MODEL_READ_TIMEOUT_S` (60 s): the
+request deadline is checked between two chunks, so without a read timeout a silent model would
+hold a request and its slot forever. Not measured: Ollama has no metrics endpoint (checked on
+0.40.13), so its KV cache and its own queue are not visible. The KV cache is part of the memory
+Ollama reserves on the GPU, and grows with the context length times the number of requests it
+serves in parallel. Its queue can be bounded instead of measured: with `OBSLAB_MODEL_CONCURRENCY`
+calls per replica, it stays empty as long as replicas x concurrency is no more than Ollama's
+`OLLAMA_NUM_PARALLEL`. A cache that spills to storage does not exist with a local Ollama; servers
+such as vLLM expose these signals. None of them carries an SLO: they explain a breach of the
+latency or time-to-first-chunk objectives, they are not objectives themselves.
+
+**Host signals come from a poller on the host.** The GPU and Ollama run on Windows, outside the
+cluster, and Ollama has no metrics endpoint. `task host:metrics` reads `nvidia-smi` and Ollama's
+`/api/ps` every 10 seconds and sends the values through the same collector as the app, over the
+OTLP port the cluster already publishes on `127.0.0.1`. One path and one naming rule: GPU names
+follow the OpenTelemetry hardware conventions, the Ollama ones are defined in `genai.py`. The
+poller has a fixed identity (`service.name=obslab-host`, `host.name=lab-host`), and the collector
+forgets a series one minute after its last value, so a stopped poller shows as no data, not as
+its last reading. Weighed and not taken: an existing NVIDIA exporter (it runs on Windows but uses
+its own metric names and does not read Ollama), and Prometheus scraping the host (an `up` series
+for free, but a port to open in the Windows firewall). Requests and GPU readings join by time on
+the dashboard: the host row sits under the model calls, next to time per output chunk.
 
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every
