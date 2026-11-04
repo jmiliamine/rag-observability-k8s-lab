@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Response
 from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -100,6 +101,10 @@ def create_app(components: Components) -> FastAPI:
             emit("rag.refused", {"rag.refusal.reason": "deadline"})
             raise HTTPException(status_code=504, detail="the request deadline passed before an answer was ready",
                                 headers={"Retry-After": "5"}) from e
+        except httpx.TimeoutException as e:
+            # The model server stopped sending (OBSLAB_MODEL_READ_TIMEOUT_S): a gateway timeout.
+            emit("rag.failed", {"error.type": type(e).__name__[:64]})
+            raise HTTPException(status_code=504, detail="the model stopped responding") from e
         except Exception as e:
             # 502: a dependency (model, vector database) failed. Only the error type goes back to the
             # client and into the log; the full message, which can name hosts or users, stays on

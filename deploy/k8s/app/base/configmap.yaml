@@ -34,6 +34,9 @@ data:
   OBSLAB_MODEL_CONCURRENCY: "1"
   OBSLAB_MODEL_QUEUE: "8"
   OBSLAB_REQUEST_DEADLINE_S: "120"
+  # Longest silence accepted from Ollama. The deadline is checked between two chunks; a model
+  # that sends nothing at all is cut here instead, and the question gets a 504.
+  OBSLAB_MODEL_READ_TIMEOUT_S: "60"
   # Conversations: turns of history used to understand a follow-up, questions allowed in one
   # conversation, and days an idle conversation is kept before the purge job deletes it.
   OBSLAB_HISTORY_TURNS: "3"
