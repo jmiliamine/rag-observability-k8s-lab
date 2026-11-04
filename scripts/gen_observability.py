@@ -61,6 +61,9 @@ def advance(h: int = 8) -> None:
     y += h
 
 
+# 0.8 x the default request deadline (OBSLAB_REQUEST_DEADLINE_S = 120): same value as RagRequestStuck.
+STUCK_AFTER_S = 96
+
 HQ = "histogram_quantile({q}, sum by (le{by}) (rate({m}_bucket[$__rate_interval])))"
 
 row("Service health (RED)")
@@ -95,6 +98,13 @@ ts("API-equivalent cost (last 24h)", [("sum(increase(obslab_llm_cost_usd_total[2
 ts("Model errors / s by type", [("sum by (error_type) (rate(gen_ai_client_operation_duration_seconds_count{error_type!=\"\"}[$__rate_interval]))",
                                  "{{error_type}}"),
                                 ("vector(0)", "no error")], "reqps", 16, 8)
+advance()
+ts("Time per output chunk (p50 / p95)", [(HQ.format(q=q, by="", m="gen_ai_client_operation_time_per_output_chunk_seconds"),
+                                          f"p{int(q*100)}") for q in (0.5, 0.95)], "s", 0, 12,
+   desc="Pace of an answer once it has started: the time between two streamed chunks. It rises when the "
+        "model runs partly on the CPU or the GPU is shared. Long answers weigh more than short ones.")
+ts("Requests in flight (HTTP)", [("sum(http_server_active_requests)", "in flight")], "short", 12, 12,
+   desc="HTTP requests being served right now, all replicas together, probes included.")
 advance()
 
 row("Retrieval & answer quality")
@@ -147,6 +157,11 @@ ts("Requests dropped / min, by reason", [
    desc="queue_full: refused at once, the waiting line was full (HTTP 503). "
         "deadline: dropped after OBSLAB_REQUEST_DEADLINE_S (HTTP 504).")
 advance()
+ts("Oldest question in flight", [("max(rag_request_oldest_age_seconds)", "oldest"),
+                                 (f"vector({STUCK_AFTER_S})", "alert threshold")], "s", 0, 24, h=6,
+   desc="Age of the oldest question still being answered, worst replica. 0 when idle. A question should end "
+        "before OBSLAB_REQUEST_DEADLINE_S; one that stays above the threshold is stuck (alert RagRequestStuck).")
+advance(6)
 
 dashboard = {
     "uid": "obslab-rag", "title": "LLM / RAG overview", "tags": ["llm", "rag", "opentelemetry"],
