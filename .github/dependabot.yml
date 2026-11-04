@@ -2,8 +2,8 @@
 # Each PR runs the full CI, including the image and dependency scans.
 #
 # Not covered here, bump by hand: the Helm chart versions and the scanner image digests in
-# Taskfile.yml, the k3s image in deploy/k8s/k3d.yaml, and the Ollama image in
-# .github/workflows/real-model.yml.
+# Taskfile.yml, the k3s image in deploy/k8s/k3d.yaml, the Ollama image in
+# .github/workflows/real-model.yml, and the Collector image in deploy/compose (see below).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -40,6 +40,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # The Collector publishes one tag per architecture (0.163.2-386, -arm64...). Dependabot reads
+      # the suffix as a newer version and proposed the 32-bit build three times. Bumped by hand,
+      # with the Collector chart of the cluster (Taskfile.yml).
+      - dependency-name: "otel/opentelemetry-collector-contrib"
 
   - package-ecosystem: docker         # images referenced by the Kubernetes manifests
     directory: /deploy/k8s/app/base
