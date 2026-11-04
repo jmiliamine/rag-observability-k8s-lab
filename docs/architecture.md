@@ -295,8 +295,14 @@ drift away from the notes. It does not drop when an answer uses the words of the
 the opposite. On one follow-up question asked 30 times to `llama3.2:3b`, 4 answers contradicted
 the note, and they scored 0.76 to 0.80 while the 23 correct ones averaged 0.69. Asking the same
 model to judge the answer did not help: it approved the contradicting answer 10 times out of 10
-and rejected a correct one 3 times out of 10. So the score keeps its alert as a drift signal,
-and the lab does not claim to detect a wrong answer.
+and rejected a correct one 3 times out of 10. A second attempt, with the claim-by-claim method
+of the hosted grounding checks (list the claims, label each supported, contradicted or not
+mentioned) at temperature 0, on the 28 labelled answers: it flagged 4 of the 5 wrong answers,
+and also 14 of the 23 correct ones. The bar fixed before the run was 4 caught with at most 2
+false alarms. A 3-billion-parameter model is not a usable judge here, with either method. So
+the score keeps its alert as a drift signal, no judge runs at request time, and the lab does not
+claim to detect a wrong answer. A dedicated grounding model would be an offline evaluation, not
+a runtime check: at about 5 GB it does not fit next to the answering model on a laptop GPU.
 
 **Every "I don't know" is a fallback.** There are two ways to get one: retrieval finds nothing
 relevant, or chunks are found and the model says they are not enough. Both are counted in
