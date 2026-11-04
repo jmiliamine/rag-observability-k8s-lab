@@ -116,6 +116,7 @@ What protects the index:
 | RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests, oldest question in flight | Prometheus |
 | HTTP metrics | `http.server.request.duration` (stable semantic conventions) | Prometheus |
 | Traces | one tree per question, GenAI attributes on each model call, a database span per vector query | Tempo |
+| Host | GPU memory, use and temperature; memory of each loaded Ollama model and its part on the GPU (`task host:metrics`) | Prometheus |
 | Logs | named events with fixed fields (answer, refusal, failure, ingest, purge, start, stop), each with its trace ID | Loki, and the container output |
 
 Metric labels are bounded (operation, model, node, reason, error type). Prompts and answers
@@ -321,6 +322,18 @@ calls per replica, it stays empty as long as replicas x concurrency is no more t
 `OLLAMA_NUM_PARALLEL`. A cache that spills to storage does not exist with a local Ollama; servers
 such as vLLM expose these signals. None of them carries an SLO: they explain a breach of the
 latency or time-to-first-chunk objectives, they are not objectives themselves.
+
+**Host signals come from a poller on the host.** The GPU and Ollama run on Windows, outside the
+cluster, and Ollama has no metrics endpoint. `task host:metrics` reads `nvidia-smi` and Ollama's
+`/api/ps` every 10 seconds and sends the values through the same collector as the app, over the
+OTLP port the cluster already publishes on `127.0.0.1`. One path and one naming rule: GPU names
+follow the OpenTelemetry hardware conventions, the Ollama ones are defined in `genai.py`. The
+poller has a fixed identity (`service.name=obslab-host`, `host.name=lab-host`), and the collector
+forgets a series one minute after its last value, so a stopped poller shows as no data, not as
+its last reading. Weighed and not taken: an existing NVIDIA exporter (it runs on Windows but uses
+its own metric names and does not read Ollama), and Prometheus scraping the host (an `up` series
+for free, but a port to open in the Windows firewall). Requests and GPU readings join by time on
+the dashboard: the host row sits under the model calls, next to time per output chunk.
 
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every

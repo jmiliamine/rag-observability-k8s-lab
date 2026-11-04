@@ -107,6 +107,27 @@ ts("Requests in flight (HTTP)", [("sum(http_server_active_requests)", "in flight
    desc="HTTP requests being served right now, all replicas together, probes included.")
 advance()
 
+row("Host GPU and model server (task host:metrics)")
+HOST = "Host value, sent by `task host:metrics`: empty when the poller is not running."
+ts("GPU memory", [("sum(hw_gpu_memory_limit_bytes)", "total"), ("sum(hw_gpu_memory_usage_bytes)", "used"),
+                  ("sum(obslab_ollama_model_vram_bytes)", "Ollama models"),
+                  ("sum(hw_gpu_memory_usage_bytes) - (sum(obslab_ollama_model_vram_bytes) or vector(0))",
+                   "other programs")], "bytes", 0, 12,
+   desc=HOST + " Other programs = used minus Ollama's share: on a laptop, the browser or the desktop can push "
+               "the model out of GPU memory.")
+ts("GPU busy and temperature", [("max(hw_gpu_utilization_ratio)", "busy"),
+                                ("max(obslab_host_gpu_temperature_celsius) / 100", "temperature / 100 °C")],
+   "percentunit", 12, 12, desc=HOST)
+advance()
+ts("Model part running on the CPU", [("sum(obslab_ollama_model_size_bytes - obslab_ollama_model_vram_bytes)", "on CPU")],
+   "bytes", 0, 8, kind="stat",
+   desc=HOST + " Above 0: the model did not fit in GPU memory and answers slow down a lot.")
+ts("Models loaded in Ollama", [("max(obslab_ollama_models_loaded)", "loaded")], "short", 8, 8, kind="stat",
+   desc=HOST + " 0: the next question pays a cold load (time to first chunk spikes).")
+ts("Host poller reporting", [("count(hw_gpu_memory_limit_bytes) or count(obslab_ollama_models_loaded) or vector(0)", "series")],
+   "short", 16, 8, kind="stat", desc="0: no host values. Run `task host:metrics` on the host.")
+advance()
+
 row("Retrieval & answer quality")
 ts("Top similarity score", [(HQ.format(q=q, by="", m="rag_retrieval_top_score"), f"p{int(q*100)}") for q in (0.1, 0.5, 0.9)],
    "short", 0, 8, desc="A drop means the corpus no longer covers what people ask.")
