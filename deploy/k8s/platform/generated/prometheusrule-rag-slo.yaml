@@ -55,3 +55,11 @@ spec:
           labels: {severity: ticket}
           annotations:
             summary: "Median groundedness {{ $value }} — answers drift away from retrieved context"
+        # 96 s = 0.8 x the default request deadline (120 s). Silent when the series is absent.
+        - alert: RagRequestStuck
+          expr: max(rag_request_oldest_age_seconds) > 96
+          for: 2m
+          labels: {severity: ticket}
+          annotations:
+            summary: "A question has been running for {{ $value | humanizeDuration }}, close to the request deadline"
+            runbook: "docs/troubleshooting.md, section A question is stuck"

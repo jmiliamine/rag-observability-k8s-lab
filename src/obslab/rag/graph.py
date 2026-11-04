@@ -308,10 +308,11 @@ class RagApp:
         budget = min(deadline_s or self.settings.request_deadline_s, self.settings.request_deadline_s)
         deadline = time.monotonic() + budget
         trace.get_current_span().set_attribute("rag.request.deadline_s", budget)   # on the request span
-        state = graph.invoke(
-            {**NEW_TURN, "question": question},
-            config={"callbacks": [self.handler],
-                    "configurable": {"thread_id": conversation_id, "deadline": deadline}}, **saving)
+        with self.rag_metrics.in_flight():
+            state = graph.invoke(
+                {**NEW_TURN, "question": question},
+                config={"callbacks": [self.handler],
+                        "configurable": {"thread_id": conversation_id, "deadline": deadline}}, **saving)
         emit("rag.answered", {"rag.route": state.get("route", ""), "rag.rewrites": state.get("rewrites", 0),
                               "rag.groundedness": state.get("groundedness", 0.0), "rag.turn": state.get("turn", 1),
                               "gen_ai.conversation.id": conversation_id})

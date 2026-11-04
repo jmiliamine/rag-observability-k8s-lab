@@ -36,12 +36,14 @@ from .setup import Telemetry
 
 
 class _Run:
-    __slots__ = ("span", "start", "attrs", "first_chunk", "kind")
+    __slots__ = ("span", "start", "attrs", "first_chunk", "kind", "last_chunk", "gaps", "gap_sum")
 
     def __init__(self, span, attrs: dict[str, str], kind: str):
         self.span, self.attrs, self.kind = span, attrs, kind
         self.start = time.perf_counter()
         self.first_chunk: float | None = None
+        self.last_chunk: float | None = None
+        self.gaps, self.gap_sum = 0, 0.0
 
 
 class OTelCallbackHandler(BaseCallbackHandler):
@@ -160,8 +162,18 @@ class OTelCallbackHandler(BaseCallbackHandler):
 
     def on_llm_new_token(self, token, *, chunk=None, run_id, parent_run_id=None, **kw):
         run = self._runs.get(run_id)
-        if run is not None and run.first_chunk is None:
-            run.first_chunk = time.perf_counter() - run.start
+        if run is None or not token:
+            # An empty chunk carries no text: LangChain ends a stream with one, and so does
+            # Ollama's final "done" message. Counting it would add a gap of nearly zero.
+            return
+        now = time.perf_counter()
+        if run.first_chunk is None:
+            run.first_chunk = now - run.start
+        else:
+            gap = now - run.last_chunk
+            run.gaps, run.gap_sum = run.gaps + 1, run.gap_sum + gap
+            self.genai.time_per_chunk.record(gap, run.attrs)
+        run.last_chunk = now
 
     def on_llm_end(self, response, *, run_id, parent_run_id=None, **kw):
         run = self._pop(run_id)
@@ -193,6 +205,8 @@ class OTelCallbackHandler(BaseCallbackHandler):
             run.span.set_attribute("gen_ai.response.finish_reasons", [str(finish)])
         if run.first_chunk is not None:
             run.span.set_attribute("obslab.time_to_first_chunk_s", round(run.first_chunk, 4))
+        if run.gaps:
+            run.span.set_attribute("obslab.time_per_output_chunk_s", round(run.gap_sum / run.gaps, 4))
         if self.capture:
             run.span.set_attribute("gen_ai.output.messages", json.dumps([{"role": "assistant", "content": text}]))
         self.genai.record_inference(attrs, elapsed, in_tok, out_tok, run.first_chunk)

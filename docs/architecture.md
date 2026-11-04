@@ -112,8 +112,8 @@ What protects the index:
 
 | Signal | Examples | Where |
 |---|---|---|
-| GenAI metrics | `gen_ai.client.operation.duration`, `gen_ai.client.inference.usage.{input,output}_tokens`, time to first chunk | Prometheus |
-| RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests | Prometheus |
+| GenAI metrics | `gen_ai.client.operation.duration`, `gen_ai.client.inference.usage.{input,output}_tokens`, time to first chunk, time per output chunk | Prometheus |
+| RAG metrics | retrieval top score, relevant documents, rewrites, fallbacks, groundedness, node duration, node retries, admission wait, waiting line, dropped requests, oldest question in flight | Prometheus |
 | HTTP metrics | `http.server.request.duration` (stable semantic conventions) | Prometheus |
 | Traces | one tree per question, GenAI attributes on each model call, a database span per vector query | Tempo |
 | Logs | named events with fixed fields (answer, refusal, failure, ingest, purge, start, stop), each with its trace ID | Loki, and the container output |
@@ -301,6 +301,20 @@ and the lab does not claim to detect a wrong answer.
 relevant, or chunks are found and the model says they are not enough. Both are counted in
 `rag.fallbacks`, under the reasons `no_relevant_context` and `model_declined`, and both are
 routed as `fallback`, so the fallback rate and its alert see all of them.
+
+**Serving signals: what the lab measures, and what Ollama does not show.** Measured, from the
+client side: time to first chunk, time per output chunk (the pace of an answer once it has
+started), questions in flight and the age of the oldest one, the waiting line in front of the
+model. A model that stops sending is cut after `OBSLAB_MODEL_READ_TIMEOUT_S` (60 s): the
+request deadline is checked between two chunks, so without a read timeout a silent model would
+hold a request and its slot forever. Not measured: Ollama has no metrics endpoint (checked on
+0.40.13), so its KV cache and its own queue are not visible. The KV cache is part of the memory
+Ollama reserves on the GPU, and grows with the context length times the number of requests it
+serves in parallel. Its queue can be bounded instead of measured: with `OBSLAB_MODEL_CONCURRENCY`
+calls per replica, it stays empty as long as replicas x concurrency is no more than Ollama's
+`OLLAMA_NUM_PARALLEL`. A cache that spills to storage does not exist with a local Ollama; servers
+such as vLLM expose these signals. None of them carries an SLO: they explain a breach of the
+latency or time-to-first-chunk objectives, they are not objectives themselves.
 
 **Readiness without Ollama.** `/readyz` checks what the app owns: its graph and its index. It
 does not call Ollama, because a shared dependency being down would empty the Service on every

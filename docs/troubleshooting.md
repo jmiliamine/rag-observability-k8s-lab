@@ -98,6 +98,13 @@ sample notes; a much larger notes folder needs more memory for the ingest job an
 **The first answer takes a minute.** Ollama loads the model on the first call. Later calls
 are much faster.
 
+**A question is stuck (alert `RagRequestStuck`).** The oldest question in flight is close to
+the request deadline. Look in this order. The model server: `ollama ps` shows whether the model
+is loaded, and whether part of it runs on the CPU. GPU memory: other programs on the machine
+can push the model out of it, and answers then slow down a lot. The waiting line: the
+"Model admission" row of the dashboard. A model server that stops sending entirely is cut
+after `OBSLAB_MODEL_READ_TIMEOUT_S` (60 s) and the question gets a 504.
+
 ## Telemetry
 
 **No data in Grafana.** Send traffic first (`task load`). Metrics arrive after about 30
