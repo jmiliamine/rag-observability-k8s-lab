@@ -147,3 +147,66 @@ class RagMetrics:
         with self._in_flight_lock:
             oldest = min(self._in_flight.values(), default=None)
         yield Observation(0.0 if oldest is None else round(time.monotonic() - oldest, 3))
+
+
+class HostMetrics:
+    """Host signals read by the poller (telemetry/host.py), as observable instruments: the SDK asks
+    for their values at each export. GPU names follow the OpenTelemetry hardware conventions
+    (development); the Ollama ones are the lab's own, Ollama has no conventions or endpoint."""
+
+    def __init__(self, meter: Meter, sampler) -> None:
+        self.sampler = sampler
+        meter.create_observable_gauge(
+            "hw.gpu.utilization", callbacks=[self._utilization], unit="1",
+            description="Fraction of time the GPU was busy over the last sample period.")
+        meter.create_observable_up_down_counter(
+            "hw.gpu.memory.usage", callbacks=[self._memory_used], unit="By", description="GPU memory used.")
+        meter.create_observable_up_down_counter(
+            "hw.gpu.memory.limit", callbacks=[self._memory_total], unit="By", description="GPU memory available.")
+        meter.create_observable_gauge(
+            "obslab.host.gpu.temperature", callbacks=[self._temperature], unit="Cel",
+            description="GPU temperature: laptops slow the GPU down when it is hot.")
+        meter.create_observable_up_down_counter(
+            "obslab.ollama.model.size", callbacks=[self._model_size], unit="By",
+            description="Memory a loaded Ollama model needs, with its context (KV cache included).")
+        meter.create_observable_up_down_counter(
+            "obslab.ollama.model.vram", callbacks=[self._model_vram], unit="By",
+            description="Part of a loaded Ollama model held in GPU memory; the rest runs on the CPU.")
+        meter.create_observable_gauge(
+            "obslab.ollama.models.loaded", callbacks=[self._models_loaded], unit="{model}",
+            description="Models Ollama holds in memory; 0 means the next question pays a cold load.")
+
+    @staticmethod
+    def _gpu_attrs(gpu) -> dict[str, str]:
+        return {"hw.id": f"gpu{gpu.index}", "hw.type": "gpu", "hw.name": gpu.name}
+
+    def _gpu_values(self, field: str) -> Iterator[Observation]:
+        for gpu in self.sampler.sample()[0]:
+            value = getattr(gpu, field)
+            if value is not None:
+                yield Observation(value, self._gpu_attrs(gpu))
+
+    def _utilization(self, _options: CallbackOptions) -> Iterator[Observation]:
+        for o in self._gpu_values("utilization"):
+            yield Observation(o.value, {**o.attributes, "hw.gpu.task": "general"})
+
+    def _memory_used(self, _options: CallbackOptions) -> Iterator[Observation]:
+        yield from self._gpu_values("memory_used")
+
+    def _memory_total(self, _options: CallbackOptions) -> Iterator[Observation]:
+        yield from self._gpu_values("memory_total")
+
+    def _temperature(self, _options: CallbackOptions) -> Iterator[Observation]:
+        yield from self._gpu_values("temperature")
+
+    def _model_size(self, _options: CallbackOptions) -> Iterator[Observation]:
+        for m in self.sampler.sample()[1]:
+            yield Observation(m.size, {REQ_MODEL: m.model})
+
+    def _model_vram(self, _options: CallbackOptions) -> Iterator[Observation]:
+        for m in self.sampler.sample()[1]:
+            yield Observation(m.size_vram, {REQ_MODEL: m.model})
+
+    def _models_loaded(self, _options: CallbackOptions) -> Iterator[Observation]:
+        yield Observation(len(self.sampler.sample()[1]))
+

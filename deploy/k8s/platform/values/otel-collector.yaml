@@ -97,6 +97,9 @@ config:
     prometheus:
       endpoint: "${env:MY_POD_IP}:8889"
       enable_open_metrics: true    # exemplars (trace ids) on histograms
+      # Forget a series 1 min after its last value (default 5 min): a stopped host poller then
+      # shows as no data, not as its last reading. Every sender exports at least every 10 s.
+      metric_expiration: 1m
       resource_to_telemetry_conversion:
         enabled: true              # service.name, k8s.pod.name... become labels
     otlp/tempo:
