@@ -6,6 +6,9 @@ What the lab measures its answers against.
   answers it. Written by hand.
 - `baseline.json`: the retrieval metrics of the current `main`, one entry per embedding model.
   `task eval` fails when a run is below them.
+- `answers.jsonl`: 111 answers of the answering model to questions of the golden set, labelled
+  `correct` or `wrong` against the note. The test set for anything that claims to detect a wrong
+  answer.
 
 Results and decisions are in [docs/results.md](../docs/results.md).
 
@@ -75,3 +78,35 @@ Three kinds, because they fail differently:
    pull request. A baseline that goes down needs a reason.
 
 The labels are per note, not per chunk, so the set stays valid when the chunking changes.
+
+## The labelled answers
+
+`answers.jsonl` holds real answers of `llama3.2:3b`, collected from evaluation runs: for each
+question, one answer that the term check calls right, and up to two it calls wrong. Each was
+read against its note by two readers, independently. They agreed on 111 of 116; the five others
+were dropped. 82 are `correct` (every claim is supported by the note), 29 are `wrong` (a claim
+is contradicted by the note, or is not in it and matters for the question).
+
+It is used to calibrate a grounding checker, a model that reads a note and an answer and says
+whether the note supports the answer:
+
+```
+task eval:checker CHECKER=ollama:bespoke-minicheck
+task eval:checker CHECKER=hhem
+```
+
+A checker that passes can then read the answers of an evaluation run and list the ones their
+note does not support:
+
+```
+task eval PROVIDER=ollama ANSWERS=1 -- --json run.json
+task eval:checker RUN=run.json
+```
+
+The bar is written in `scripts/calibrate_checker.py` and was fixed before any checker was run:
+catch at least 4 wrong answers in 5, with at most 2 false alarms in 23 correct answers. On this
+file: at least 24 of the 29, at most 7 of the 82. A checker that has no threshold meeting both
+is not used; the results are in [docs/results.md](../docs/results.md).
+
+A new answer is added with its `question_id`, the `sources` of that question, and a label that a
+second reader confirms.

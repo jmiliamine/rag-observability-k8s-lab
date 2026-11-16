@@ -20,7 +20,7 @@ OBSLAB_MODEL_READ_TIMEOUT_S  longest silence accepted from the model server, def
                          that stops sending is cut here, the request deadline cannot do it alone
 OBSLAB_TOP_K / OBSLAB_MIN_SCORE   retrieval tuning (validated: 1..20 and 0..1)
 OBSLAB_CHUNK_SIZE / OBSLAB_CHUNK_OVERLAP   characters per chunk and shared between two chunks,
-                         read by the ingest (defaults 800 and 120; an index is built with one pair)
+                         read by the ingest (defaults 500 and 100, chosen on the golden set: docs/results.md)
 OBSLAB_PRICE_IN / OBSLAB_PRICE_OUT  USD per 1M tokens, to chart an "API-equivalent" cost
 OBSLAB_ENVIRONMENT       deployment.environment.name resource attribute (local, k3d, ...)
 OBSLAB_LOG_STDOUT        true to also write each log event as a JSON line on the process output
@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 
 PROVIDERS = ("ollama", "fake")
 MAX_TOP_K = 20
+CHUNK_SIZE, CHUNK_OVERLAP = 500, 100      # characters; measured against 800 and 120 in docs/results.md
 
 
 def _bool(name: str, default: bool = False) -> bool:
@@ -53,8 +54,8 @@ class Settings:
     capture_content: bool = field(default_factory=lambda: _bool("OBSLAB_CAPTURE_CONTENT"))
     top_k: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_TOP_K", "4")))
     min_score: float = field(default_factory=lambda: float(os.environ.get("OBSLAB_MIN_SCORE", "0.6")))
-    chunk_size: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_SIZE", "800")))
-    chunk_overlap: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_OVERLAP", "120")))
+    chunk_size: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_SIZE", str(CHUNK_SIZE))))
+    chunk_overlap: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_OVERLAP", str(CHUNK_OVERLAP))))
     history_turns: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_HISTORY_TURNS", "3")))
     max_turns: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_MAX_TURNS", "20")))
     conversation_ttl_days: float = field(

@@ -5,6 +5,7 @@ compares with evals/baseline.json."""
 
 import json
 import logging
+import re
 from collections import Counter
 
 import pytest
@@ -239,7 +240,7 @@ def test_the_command_fails_below_the_baseline_and_on_another_setup(eval_cli, cap
     baseline.write_text(json.dumps(data), encoding="utf-8")
     capsys.readouterr()
     assert run("--check") == 1
-    assert "mrr 0.8333 is below the baseline 0.9900" in capsys.readouterr().err
+    assert re.search(r"mrr 0\.\d{4} is below the baseline 0\.9900", capsys.readouterr().err)
     monkeypatch.setenv("OBSLAB_MIN_SCORE", "0.3")              # the numbers are not comparable any more
     assert run("--check") == 1
     assert "recorded for another setup: min_score=0.3 (baseline: 0.2)" in capsys.readouterr().err
