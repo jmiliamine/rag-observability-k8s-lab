@@ -27,6 +27,9 @@ Retrieval is scored with no model call, so a run gives the same numbers every ti
 - **MRR**: mean of 1 / rank of the expected note.
 - **in context**: the expected note is among the first 4 *and* above the score threshold. This
   is what the answering model receives.
+- **facts in context**: the terms a right answer must contain are in the text of those chunks
+  (82 of the 99 questions have such terms). A note can come back through a chunk that does not
+  hold the answer; this number sees it, the previous ones do not.
 - **refused**: for a question without answer, nothing is above the threshold.
 
 With 99 questions, one question is one point. Two variants are compared question by question
@@ -42,6 +45,7 @@ Vector search only, chunks of 800 characters with 120 of overlap (47 chunks), fi
 | recall@4 | 0.970 | 0.949 |
 | MRR | 0.915 | 0.833 |
 | in context | 0.879 | 0.768 |
+| facts in context | 0.805 | 0.683 |
 | refused (12 questions) | 0.833 | 0.583 |
 
 The fake embeddings are a bag of words hashed into a vector. Their column is not a result: it
@@ -68,7 +72,40 @@ What the baseline shows:
 - **Questions about an exact term are the weak spot of vector search.** "What does exit code 137
   mean?" finds its note at rank 9, "What is fsGroup for?" not in the first 10.
 
+## Answers baseline
+
+`task eval PROVIDER=ollama ANSWERS=1`: every question through the whole graph, with
+`llama3.2:3b` on a laptop GPU. A question with an answer is right when it is answered and the
+reply holds the expected terms; a question without answer is right when the reply is "I don't
+know"; a follow-up is asked after its previous turn.
+
+Three runs of the same configuration:
+
+| | Mean | Lowest and highest run |
+|---|---|---|
+| Right, 99 questions with an answer | 0.825 | 0.818 to 0.828 |
+| Declined, 12 questions without answer | 0.889 | 0.833 to 0.917 |
+| Right, 10 follow-ups | 0.833 | 0.700 to 0.900 |
+| Time per question | p50 2.5 s | |
+
+What it shows:
+
+- **The model does not answer the same way twice.** Between two identical runs, 5 of the 121
+  verdicts change. A difference of that size between two variants is noise; with 10 questions,
+  the follow-up line alone can move by 20 points.
+- **About 17 answerable questions out of 99 are counted wrong on every run.** Six of them never
+  get their note past the threshold and end as "I don't know". The others are answered: most
+  wrongly, from the right note (the liveness probe given where the note says startup probe) or
+  from a chunk of another note that came along, and a few correctly in other words than the
+  expected terms.
+- **A question close to the notes can be answered from the model's own knowledge.** "How do I
+  fine-tune an embedding model on my own data?" passes the threshold, the notes say nothing
+  about it, and the model answers anyway.
+- **The term check has two blind spots, both seen in these runs.** It calls right an answer
+  that holds the terms next to a false statement, and it calls wrong a correct answer worded
+  differently. Read by hand, about 5 answers in 100 are in the first case.
+
 ## Decisions
 
-None yet beyond the baseline. Each change tried against it is added here with its numbers,
+None yet beyond the baselines. Each change tried against them is added here with its numbers,
 kept or not.

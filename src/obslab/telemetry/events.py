@@ -41,11 +41,27 @@ EVENTS: dict[str, tuple[int, frozenset[str]]] = {
     "ingest.failed": (logging.ERROR, frozenset({"obslab.ingest.reason"})),
     "conversations.purged": (logging.INFO, frozenset({"obslab.conversations.removed", "obslab.conversations.kept",
                                                       "obslab.conversations.ttl_days"})),
+    # One per question of an evaluation run (`obslab eval`). The name and its three attributes are
+    # the GenAI convention for an evaluation result; the question id and the run id are the lab's.
+    "gen_ai.evaluation.result": (logging.INFO, frozenset({
+        "gen_ai.evaluation.name", "gen_ai.evaluation.score.value", "gen_ai.evaluation.score.label",
+        "obslab.eval.question", "obslab.eval.run"})),
+    # One per run: the scores, and what produced them.
+    "eval.finished": (logging.INFO, frozenset({
+        "obslab.eval.run", "obslab.eval.mode", "obslab.eval.golden", "obslab.eval.questions",
+        "obslab.eval.recall_at_k", "obslab.eval.mrr", "obslab.eval.in_context", "obslab.eval.facts_in_context",
+        "obslab.eval.right", "obslab.eval.declined", "obslab.eval.follow_up_right",
+        "gen_ai.request.model", "obslab.embed_model", "obslab.prompt.version", "obslab.index.id",
+        "rag.retrieval.top_k", "rag.retrieval.min_score"})),
 }
 # Values a reason may take, so that it stays usable as a filter.
 REFUSAL_REASONS = frozenset({"queue_full", "deadline", "conversation_too_long"})
 INGEST_REASONS = frozenset({"source_missing", "no_notes"})
-_ENUMS = {"rag.refusal.reason": REFUSAL_REASONS, "obslab.ingest.reason": INGEST_REASONS}
+EVALUATIONS = frozenset({"retrieval", "answer"})      # what is scored: where the note came back, the reply
+EVALUATION_LABELS = frozenset({"hit", "miss", "right", "wrong"})
+_ENUMS = {"rag.refusal.reason": REFUSAL_REASONS, "obslab.ingest.reason": INGEST_REASONS,
+          "gen_ai.evaluation.name": EVALUATIONS, "gen_ai.evaluation.score.label": EVALUATION_LABELS,
+          "obslab.eval.mode": frozenset({"retrieval", "answers"})}
 MAX_TEXT = 64               # an id or an error type fits; a sentence does not
 
 

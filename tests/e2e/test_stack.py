@@ -135,8 +135,10 @@ def test_trace_reaches_tempo(asked):
     assert asked[0]["conversation_id"] in text, "gen_ai.conversation.id is missing from the workflow span"
     assert "rag.node condense" in text
     assert "rag.admission.wait_s" in text, "the wait for a model slot is missing from the node spans"
+    assert "obslab.prompt.version" in text, "the version of the prompts is missing from the request span"
     if STORE == "pgvector":
         assert "SELECT rag.chunks" in text, "the vector query span is missing from the trace"
+        assert "obslab.index.id" in text, "the retrieval span does not say which index answered"
 
 
 def test_logs_reach_loki_with_the_trace_id(asked):
@@ -150,3 +152,36 @@ def test_logs_reach_loki_with_the_trace_id(asked):
                            ' | rag_route="answered"')
     res = request(f"{LOKI}/loki/api/v1/query_range?query={q}&start={start}&limit=5")["data"]["result"]
     assert res, "the log line of the answer is not the rag.answered event, or its fields are missing"
+
+
+def test_an_evaluation_run_reaches_loki(asked, monkeypatch, capsys):
+    """`obslab eval` with OTLP export: the summary of the run and one verdict per question are
+    log events in Loki, tied by the id of the run. Fake embeddings: no model is needed."""
+    from obslab import cli
+    golden = NOTES.parent / "evals" / "golden.jsonl"
+    for name, value in {"OBSLAB_PROVIDER": "fake", "OBSLAB_MIN_SCORE": "0.2", "OBSLAB_TOP_K": "4",
+                        "OBSLAB_TELEMETRY": "otlp"}.items():
+        monkeypatch.setenv(name, value)
+    assert cli.main(["eval", "--golden", str(golden), "--source", str(NOTES)]) == 0     # flushes on exit
+    run = next(line.split()[1] for line in capsys.readouterr().out.splitlines() if line.startswith("run "))
+    start = int((time.time() - 900) * 1e9)
+
+    def lines(query: str) -> list:
+        q = urllib.parse.quote(query)
+        return request(f"{LOKI}/loki/api/v1/query_range?query={q}&start={start}&limit=500")["data"]["result"]
+
+    # This run and no other: the id is printed by the command and carried by every event.
+    summary = _poll(lambda: lines('{service_name="obslab-rag"} |= "eval.finished"' f' | obslab_eval_run="{run}"'))
+    assert summary, f"no eval.finished event of run {run} in Loki"
+    fields = summary[0]["stream"]
+    assert fields["obslab_eval_mode"] == "retrieval" and fields["obslab_embed_model"] == "fake-embed", fields
+    assert len(fields["obslab_index_id"]) == 12 and fields["obslab_eval_questions"] == "99", fields
+    assert float(fields["obslab_eval_recall_at_k"]) > 0.9, fields
+
+    def verdicts() -> set:
+        found = lines('{service_name="obslab-rag"} |= "gen_ai.evaluation.result"'
+                      f' | obslab_eval_run="{run}" | gen_ai_evaluation_name="retrieval"')
+        return {stream["stream"]["obslab_eval_question"] for stream in found}
+
+    _poll(lambda: len(verdicts()) == 99)            # the batch may land in more than one request
+    assert len(verdicts()) == 99, f"{len(verdicts())} questions of run {run} have a verdict in Loki, 99 were scored"

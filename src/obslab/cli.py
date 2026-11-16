@@ -5,8 +5,9 @@
                                  --conversation ID continues a previous answer
   chat [--url ...]               several questions in one conversation, typed one after the other
   conversations purge [--days N] delete the conversations idle for more than N days
-  eval [--check]                 score the search on the golden set (evals/golden.jsonl): recall, MRR;
-                                 --check fails when a metric is below the committed baseline
+  eval [--check] [--answers]     score the search on the golden set (evals/golden.jsonl): recall, MRR;
+                                 --check fails when a metric is below the committed baseline;
+                                 --answers asks every question to the models and counts the right answers
   serve [--port 8000]            HTTP API (POST /ask)
   load [--n 30] [--url ...] [--host-header H]   traffic generator (in-domain + off-topic questions);
                                  --concurrency N sends N at once, --timeout S is how long a caller waits
@@ -78,7 +79,7 @@ def cmd_ingest(a) -> int:
     source = Path(a.source)
     if not source.is_dir():
         return failed("source_missing", f"data lake not found: {a.source} is not a folder")
-    docs = corpus.split(corpus.load_folder(source))
+    docs = corpus.split(corpus.load_folder(source), settings.chunk_size, settings.chunk_overlap)
     if not docs:        # checked before the database is touched: the current index keeps serving
         return failed("no_notes", f"no .md/.txt notes under {a.source}: the index is left as it is")
     meta = {"provider": settings.provider, "embed_model": settings.embed_model_id}
@@ -169,52 +170,151 @@ def cmd_conversations(a) -> int:
 
 
 def cmd_eval(a) -> int:
-    """Score the search on the golden set, with no model call (evaluation.py)."""
+    """Score the search, or with --answers the answers, on the golden set (evaluation.py)."""
+    import uuid
+
     from langchain_core.vectorstores import InMemoryVectorStore
 
     from . import evaluation
+    from .app import build_components
     from .config import Settings
     from .rag import corpus
+    from .rag.graph import PROMPT_VERSION
     from .rag.providers import embeddings
-    from .telemetry import GenAIMetrics, init_telemetry
+    from .telemetry import GenAIMetrics, emit, init_telemetry
     settings = Settings()
+    mode = "answers" if a.answers else "retrieval"
+    if a.answers and (a.check or a.update_baseline):
+        # Said before a model is called: the answers of a real model change from run to run.
+        print("the baseline is for retrieval: --answers is reported, never gated (drop --check or "
+              "--update-baseline)", file=sys.stderr)
+        return 2
     golden, notes, baseline_file = Path(a.golden), Path(a.source), Path(a.baseline)
     questions = evaluation.load_golden(golden, notes)
-    docs = corpus.split(corpus.load_folder(notes))
+    previous = None
+    if a.against:               # read now: a wrong file must not be found out after a run of several minutes
+        try:
+            previous = json.loads(Path(a.against).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(f"--against {a.against}: cannot be read ({type(e).__name__})", file=sys.stderr)
+            return 2
+        if not isinstance(previous, dict) or "scores" not in previous or "mode" not in previous:
+            print(f"--against {a.against}: not a --json file of this command (no mode or no scores)", file=sys.stderr)
+            return 2
+        if previous["mode"] != mode:
+            print(f"--against {a.against} is a {previous['mode']} run, this one is a {mode} run", file=sys.stderr)
+            return 2
+    docs = corpus.split(corpus.load_folder(notes), settings.chunk_size, settings.chunk_overlap)
+    model, k = settings.embed_model_id, settings.top_k
+    index = corpus.index_id(docs, model)
+    for d in docs:              # as the pgvector store does: each result says which index it comes from
+        d.metadata["index_id"] = index
+    config = {"k": k, "min_score": settings.min_score, "chunk_size": settings.chunk_size,
+              "chunk_overlap": settings.chunk_overlap, "golden": evaluation.fingerprint(golden)}
+    kinds = [q.kind for q in questions]
+    # Each result is also a log event (telemetry/events.py): with OBSLAB_TELEMETRY=otlp a run can
+    # be read in Loki next to the traces of its questions. `run` ties the events of one run.
+    run = f"{time.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    print(f"run         {run}")
+    print(f"golden set  {golden.as_posix()} ({config['golden']}): {kinds.count('answerable')} questions with a "
+          f"source, {kinds.count('no_answer')} without answer, {kinds.count('follow_up')} follow-ups")
+    print(f"search      {model}, {len(docs)} chunks of {settings.chunk_size} characters "
+          f"({settings.chunk_overlap} shared), first {k} results, threshold {settings.min_score:g}, index {index}")
+    # A field of an event holds 64 characters at most: a longer model name is cut, not refused.
+    identity = {"obslab.eval.run": run, "obslab.eval.golden": config["golden"], "obslab.embed_model": model[:64],
+                "obslab.index.id": index, "rag.retrieval.top_k": k, "rag.retrieval.min_score": settings.min_score}
+
+    def result(name: str, question: str, score: float, label: str) -> None:
+        emit("gen_ai.evaluation.result", {
+            "gen_ai.evaluation.name": name, "gen_ai.evaluation.score.value": float(score),
+            "gen_ai.evaluation.score.label": label, "obslab.eval.question": question, "obslab.eval.run": run})
+
     tel = init_telemetry(settings)
     try:
         store = InMemoryVectorStore(embeddings(settings, tel, GenAIMetrics(tel.meter)))
         store.add_documents(docs)
-        report = evaluation.evaluate_retrieval(store, questions, settings.top_k, settings.min_score)
+        if a.answers:
+            chat = "fake-chat" if settings.provider == "fake" else settings.chat_model
+            print(f"answers     {chat}, prompts {PROMPT_VERSION}\n")
+            components = build_components(settings, tel, store=store)
+
+            def judged(r) -> None:
+                result("answer", r.id, float(r.right), "right" if r.right else "wrong")
+                print(f"  {r.id:<11} {r.route:<9} {'right' if r.right else 'WRONG':<6} {r.seconds:5.1f}s", flush=True)
+            report = evaluation.evaluate_answers(
+                components.ask, questions, progress=judged,
+                around=lambda q: tel.tracer.start_as_current_span("eval.question", attributes={
+                    "obslab.eval.question": q.id, "obslab.eval.run": run}))
+            config |= {"chat_model": chat, "prompts": PROMPT_VERSION}
+            metrics = report.metrics()
+            emit("eval.finished", identity | {
+                "obslab.eval.mode": "answers", "obslab.eval.questions": len(report.rows),
+                "obslab.eval.right": metrics["right"], "obslab.eval.declined": metrics["declined"],
+                "obslab.eval.follow_up_right": metrics["follow_up_right"], "gen_ai.request.model": chat[:64],
+                "obslab.prompt.version": PROMPT_VERSION})
+        else:
+            report = evaluation.evaluate_retrieval(store, questions, k, settings.min_score)
+            for r in report.rows:
+                if r.kind == "answerable":      # the score and the label both describe the ranking
+                    result("retrieval", r.id, r.reciprocal_rank, "hit" if r.rank and r.rank <= k else "miss")
+            metrics = report.metrics()
+            emit("eval.finished", identity | {
+                "obslab.eval.mode": "retrieval", "obslab.eval.questions": metrics["questions"],
+                "obslab.eval.recall_at_k": metrics["recall_at_k"], "obslab.eval.mrr": metrics["mrr"],
+                "obslab.eval.in_context": metrics["in_context"],
+                "obslab.eval.facts_in_context": metrics["facts_in_context"]})
     finally:
         tel.shutdown()
-    model, metrics, k = settings.embed_model_id, report.metrics(), report.k
-    config = {"k": k, "min_score": settings.min_score, "golden": evaluation.fingerprint(golden)}
-    kinds = [q.kind for q in questions]
-    print(f"golden set  {golden.as_posix()} ({config['golden']}): {kinds.count('answerable')} questions with a "
-          f"source, {kinds.count('no_answer')} without answer, {kinds.count('follow_up')} follow-ups (not scored here)")
-    print(f"search      {model}, {len(docs)} chunks, first {k} results, threshold {settings.min_score:g}\n")
-    print(f"  recall@1    {metrics['recall_at_1']:.4f}")
-    print(f"  recall@{k:<3}  {metrics['recall_at_k']:.4f}")
-    print(f"  MRR         {metrics['mrr']:.4f}")
-    print(f"  in context  {metrics['in_context']:.4f}   expected note in the first {k} and above the threshold")
-    print(f"  refused     {metrics['no_answer_refused']:.4f}   questions without answer: nothing above the threshold\n")
-    for style, m in report.by_style().items():
-        print(f"  {style:<11} {m['questions']:>3} questions   recall@{k} {m['recall_at_k']:.4f}   MRR {m['mrr']:.4f}")
-    if misses := report.misses():
-        print(f"\nnot in context ({len(misses)}): " + ", ".join(
-            f"{r.id} (rank {r.rank or '-'}, top score {r.top_score:.2f})" for r in misses))
-    if a.json:
-        out = {"config": {**config, "embed_model": model, "chunks": len(docs)},
-               "metrics": metrics, "by_style": report.by_style(),
-               "rows": [{"id": r.id, "kind": r.kind, "rank": r.rank, "in_context": r.in_context,
-                         "top_score": r.top_score} for r in report.rows]}
-        Path(a.json).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8", newline="\n")
+    def line(label: str, value: float, note: str = "") -> None:
+        print(f"  {label:<17} {value:.4f}   {note}".rstrip())
+    print()
+    if a.answers:
+        line("right", metrics["right"], f"{metrics['answerable_questions']} questions with an answer: answered, "
+                                        "with the expected terms")
+        line("answered", metrics["answered"], "of them, not a fallback")
+        line("declined", metrics["declined"], f"{metrics['no_answer_questions']} questions without answer: the "
+                                              "reply is the fallback")
+        line("follow-up right", metrics["follow_up_right"], f"{metrics['follow_up_questions']} follow-ups, after "
+                                                            "the turn before")
+        errors = sorted({r.error for r in report.rows if r.error})
+        print(f"  time              p50 {metrics['p50_s']:.1f} s, p95 {metrics['p95_s']:.1f} s, "
+              f"{metrics['errors']} errors{' (' + ', '.join(errors) + ')' if errors else ''}")
+        if wrong := [r.id for r in report.rows if not r.right]:
+            print(f"\nwrong ({len(wrong)}): " + ", ".join(wrong))
+        rows = [vars(r) for r in report.rows]
+    else:
+        line("recall@1", metrics["recall_at_1"])
+        line(f"recall@{k}", metrics["recall_at_k"])
+        line("MRR", metrics["mrr"])
+        line("in context", metrics["in_context"], f"expected note in the first {k} and above the threshold")
+        line("facts in context", metrics["facts_in_context"], "the expected terms are in the text of those chunks")
+        line("refused", metrics["no_answer_refused"], "questions without answer: nothing above the threshold")
+        print()
+        for style, m in report.by_style().items():
+            print(f"  {style:<11} {m['questions']:>3} questions   recall@{k} {m['recall_at_k']:.4f}   "
+                  f"MRR {m['mrr']:.4f}")
+        if misses := report.misses():
+            print(f"\nnot in context ({len(misses)}): " + ", ".join(
+                f"{r.id} (rank {r.rank or '-'}, top score {r.top_score:.2f})" for r in misses))
+        rows = [{"id": r.id, "kind": r.kind, "rank": r.rank, "in_context": r.in_context, "facts": r.facts,
+                 "top_score": r.top_score} for r in report.rows]
+    if a.json:                  # written first: whatever fails below, the run is kept
+        out = {"mode": mode, "run": run, "config": {**config, "embed_model": model, "chunks": len(docs)},
+               "metrics": metrics, "scores": report.scores(), "rows": rows}
+        Path(a.json).write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    if previous is not None:
+        try:
+            c = evaluation.compare(previous["scores"], report.scores())
+        except ValueError as e:         # another golden set: no pair of questions to compare
+            print(f"\n--against {a.against}: {e}", file=sys.stderr)
+            return 1
+        print(f"\nagainst {a.against}: {c['better']} questions better, {c['worse']} worse, {c['same']} the same "
+              f"(sign test p = {c['p_value']})")
+    if not (a.check or a.update_baseline):
+        return 0
     if a.update_baseline:
         evaluation.write_baseline(baseline_file, model, {**config, **metrics})
         print(f"\nbaseline of {model} written to {baseline_file.as_posix()}")
-        return 0
-    if not a.check:
         return 0
     baseline = evaluation.read_baseline(baseline_file, model)
     if baseline is None:
@@ -223,7 +323,7 @@ def cmd_eval(a) -> int:
         return 1
     if stale := [f"{name}={value} (baseline: {baseline.get(name)})" for name, value in config.items()
                  if baseline.get(name) != value]:
-        # Another k, threshold or question set: the numbers are not comparable any more.
+        # Another k, threshold, chunking or question set: the numbers are not comparable any more.
         print("\nthe baseline was recorded for another setup: " + ", ".join(stale)
               + "; run again with --update-baseline and commit the file", file=sys.stderr)
         return 1
@@ -337,13 +437,16 @@ def main(argv=None) -> int:
                    help="delete conversations idle for more than this (default: OBSLAB_CONVERSATION_TTL_DAYS)")
     s.set_defaults(fn=cmd_conversations)
 
-    s = sub.add_parser("eval", help="score the search on the golden set, with no model call")
+    s = sub.add_parser("eval", help="score the search, or the answers, on the golden set")
     s.add_argument("--golden", default="evals/golden.jsonl", help="questions and the note that answers each")
     s.add_argument("--source", default="datalake", help="the notes the golden set was written for")
     s.add_argument("--baseline", default="evals/baseline.json")
     s.add_argument("--check", action="store_true", help="fail when a metric is below the baseline")
     s.add_argument("--update-baseline", action="store_true", help="record this run as the baseline")
+    s.add_argument("--answers", action="store_true",
+                   help="ask every question through the graph and count the right answers (calls the models)")
     s.add_argument("--json", default="", help="also write the result, question by question, to this file")
+    s.add_argument("--against", default="", help="a --json file of an earlier run: compare question by question")
     s.set_defaults(fn=cmd_eval)
 
     s = sub.add_parser("host-metrics", help="send the host's GPU and Ollama readings to the collector")

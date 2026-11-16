@@ -20,9 +20,11 @@ names and attributes.
 
 **Retrieval quality** (`unit/test_evaluation.py`, same command). The search is scored on the
 golden set (`evals/golden.jsonl`: questions with the note that answers each) and compared with
-the committed baseline: a change that lowers recall or MRR fails here. Offline with the fake
-embeddings on every push; with `nomic-embed-text` after each merge (`task eval PROVIDER=ollama`
-in the real-model workflow). The numbers are in [docs/results.md](../docs/results.md).
+the committed baseline: a change that lowers recall, MRR or the share of expected facts that
+reach the model fails here. Offline with the fake embeddings on every push; with
+`nomic-embed-text` after each merge (`task eval PROVIDER=ollama` in the real-model workflow).
+The same file tests how answers are judged, and that each result is written as a
+`gen_ai.evaluation.result` event. The numbers are in [docs/results.md](../docs/results.md).
 
 **Vector store** (`e2e/test_pgvector.py`). The pgvector store against a real PostgreSQL: same
 ranking as the in-memory store, a read-only API role, a re-index that readers never see half

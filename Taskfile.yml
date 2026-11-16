@@ -346,7 +346,7 @@ tasks:
     cmds: ['{{.PY}} -m pytest -m ollama -q -rs']
 
   eval:
-    desc: "Score the search on the golden set and compare it with the baseline (PROVIDER=fake|ollama; UPDATE=1 records a new baseline)"
+    desc: "Score the search on the golden set and compare it with the baseline (PROVIDER=fake|ollama; UPDATE=1 records a new baseline; ANSWERS=1 asks the models and counts the right answers)"
     vars:
       PROVIDER: '{{.PROVIDER | default "fake"}}'
     env:
@@ -354,5 +354,6 @@ tasks:
       # The score threshold belongs to the embedding model: 0.6 was calibrated for nomic-embed-text.
       OBSLAB_MIN_SCORE: '{{if .MIN_SCORE}}{{.MIN_SCORE}}{{else if eq .PROVIDER "fake"}}0.2{{else}}0.6{{end}}'
       OBSLAB_TOP_K: "4"
-      OBSLAB_TELEMETRY: none
-    cmds: ['{{.PY}} -m obslab eval {{if .UPDATE}}--update-baseline{{else}}--check{{end}}']
+      # TELEMETRY=otlp also sends each result to the collector as a log event (Loki).
+      OBSLAB_TELEMETRY: '{{.TELEMETRY | default "none"}}'
+    cmds: ['{{.PY}} -m obslab eval {{if .ANSWERS}}--answers{{else if .UPDATE}}--update-baseline{{else}}--check{{end}} {{.CLI_ARGS}}']
