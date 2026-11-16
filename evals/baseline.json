@@ -1,0 +1,26 @@
+{
+  "fake-embed": {
+    "k": 4,
+    "min_score": 0.2,
+    "golden": "1ebd99b56697",
+    "questions": 99,
+    "recall_at_1": 0.7273,
+    "recall_at_k": 0.9495,
+    "mrr": 0.8333,
+    "in_context": 0.7677,
+    "no_answer_questions": 12,
+    "no_answer_refused": 0.5833
+  },
+  "nomic-embed-text": {
+    "k": 4,
+    "min_score": 0.6,
+    "golden": "1ebd99b56697",
+    "questions": 99,
+    "recall_at_1": 0.8788,
+    "recall_at_k": 0.9697,
+    "mrr": 0.915,
+    "in_context": 0.8788,
+    "no_answer_questions": 12,
+    "no_answer_refused": 0.8333
+  }
+}

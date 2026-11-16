@@ -166,6 +166,7 @@ in about four minutes. Details in [tests/README.md](tests/README.md).
 | `task test:compose` | Starts the Compose stack, indexes the sample notes, then follows one question: answer, metrics in Prometheus, full trace in Tempo (SQL span included), log line in Loki | Docker |
 | `task test:stack` | The same telemetry checks against the cluster's platform | the cluster |
 | `task test:k8s` | Through the Gateway: answer from pgvector, both replicas serving, pod identity on the trace, clean metric labels, SLO rules evaluated | the cluster |
+| `task eval` | The search finds the right note for the questions of the golden set: recall and MRR not below the committed baseline ([results](docs/results.md)). `PROVIDER=ollama` scores the real embedding model | nothing |
 | `task test:ollama` | The real models answer from the right note, understand a follow-up from the previous turn, and off-topic questions still fall back | Ollama |
 
 ## Layout
@@ -180,7 +181,8 @@ deploy/compose/  the backends the tests need, with Docker Compose
 deploy/shared/   alert rules, dashboard and database setup used by both
 datalake/        the notes to index: the sample notes, or point DATALAKE at your own folder
 scripts/         helpers behind the Task commands
-docs/            architecture and troubleshooting
+docs/            architecture, results and troubleshooting
+evals/           the golden set of questions and the retrieval baseline
 ```
 
 ## Limits
