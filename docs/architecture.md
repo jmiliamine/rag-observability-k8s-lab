@@ -309,6 +309,20 @@ relevant, or chunks are found and the model says they are not enough. Both are c
 `rag.fallbacks`, under the reasons `no_relevant_context` and `model_declined`, and both are
 routed as `fallback`, so the fallback rate and its alert see all of them.
 
+**Retrieval is measured on a golden set, and gated.** Telemetry says how fast an answer came,
+not whether the search found the right note. `evals/golden.jsonl` holds 121 hand-written
+questions over the sample notes: 99 with the note that answers them, 12 without answer, 10
+follow-ups. `obslab eval` scores the search on them with no model call (recall@1, recall@4,
+MRR, and the share of questions whose note reaches the model above the score threshold), so the
+result is the same on every run and can fail a build: `task test` compares the fake embeddings
+with a committed baseline on every push, and the real-model workflow does the same with
+`nomic-embed-text` after each merge. The labels are per note, not per chunk, so the set
+survives a change of chunking. Two variants are compared question by question with a sign test:
+with 99 questions one question is one point, and a higher average alone is not a result. The
+alternative, a hosted evaluation service or an evaluation framework, would add a dependency for
+four ratios; the module is about 200 lines. The numbers and what was decided from them are in
+[results.md](results.md).
+
 **Serving signals: what the lab measures, and what Ollama does not show.** Measured, from the
 client side: time to first chunk, time per output chunk (the pace of an answer once it has
 started), questions in flight and the age of the oldest one, the waiting line in front of the

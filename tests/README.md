@@ -9,7 +9,7 @@ Task command, and each one needs a bit more than the previous.
 | Vector store | `task test:pgvector` | Docker | every push |
 | Compose end to end | `task test:compose` | Docker | every push |
 | Cluster end to end | `task test:k8s`, `task test:stack` | the k3d cluster (`task up`) | on main, weekly, and on pull requests labelled `cluster-e2e` |
-| Real models | `task test:compose PROVIDER=ollama`, `task test:ollama` | Ollama with both models pulled | after each merge on main and weekly, in a separate workflow that does not block a merge |
+| Real models | `task eval PROVIDER=ollama`, `task test:compose PROVIDER=ollama`, `task test:ollama` | Ollama with both models pulled | after each merge on main and weekly, in a separate workflow that does not block a merge |
 
 ## What each level checks
 
@@ -17,6 +17,12 @@ Task command, and each one needs a bit more than the previous.
 metrics it emits, the HTTP API, the sample notes against the load-test questions, input limits
 and error messages. The telemetry is captured in memory, so the tests can assert on exact span
 names and attributes.
+
+**Retrieval quality** (`unit/test_evaluation.py`, same command). The search is scored on the
+golden set (`evals/golden.jsonl`: questions with the note that answers each) and compared with
+the committed baseline: a change that lowers recall or MRR fails here. Offline with the fake
+embeddings on every push; with `nomic-embed-text` after each merge (`task eval PROVIDER=ollama`
+in the real-model workflow). The numbers are in [docs/results.md](../docs/results.md).
 
 **Vector store** (`e2e/test_pgvector.py`). The pgvector store against a real PostgreSQL: same
 ranking as the in-memory store, a read-only API role, a re-index that readers never see half

@@ -344,3 +344,15 @@ tasks:
   test:ollama:
     desc: The RAG answers the sample questions with the real local models (needs Ollama)
     cmds: ['{{.PY}} -m pytest -m ollama -q -rs']
+
+  eval:
+    desc: "Score the search on the golden set and compare it with the baseline (PROVIDER=fake|ollama; UPDATE=1 records a new baseline)"
+    vars:
+      PROVIDER: '{{.PROVIDER | default "fake"}}'
+    env:
+      OBSLAB_PROVIDER: '{{.PROVIDER}}'
+      # The score threshold belongs to the embedding model: 0.6 was calibrated for nomic-embed-text.
+      OBSLAB_MIN_SCORE: '{{if .MIN_SCORE}}{{.MIN_SCORE}}{{else if eq .PROVIDER "fake"}}0.2{{else}}0.6{{end}}'
+      OBSLAB_TOP_K: "4"
+      OBSLAB_TELEMETRY: none
+    cmds: ['{{.PY}} -m obslab eval {{if .UPDATE}}--update-baseline{{else}}--check{{end}}']

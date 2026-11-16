@@ -51,6 +51,10 @@ and asks for confirmation. Do not run it without the user's explicit request.
 - A new component or trade-off gets a short paragraph in `docs/architecture.md` (Design choices).
 - If you change the sample notes in `datalake/` or the questions in `src/obslab/cli.py`, run `task test`:
   `tests/unit/test_sample_corpus.py` checks that every load-test question is still answered.
+- A change to the search (chunking, embedding model, threshold, ranking) is judged on the golden
+  set: `task eval`, and `task eval PROVIDER=ollama` when Ollama runs. Record the before and after
+  in `docs/results.md`; update `evals/baseline.json` with `UPDATE=1` only with a reason
+  (`evals/README.md`).
 
 ## Before you finish
 
