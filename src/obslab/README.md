@@ -5,10 +5,11 @@ The application: about 1,400 lines of Python. A good reading order is `rag/graph
 
 ```
 obslab/
-├── cli.py            the `obslab` command: ingest, ask, chat, serve, load, conversations purge
+├── cli.py            the `obslab` command: ingest, ask, chat, serve, load, eval, conversations purge
 ├── api.py            FastAPI app: POST /ask, /healthz, /readyz
 ├── app.py            wires everything together once (models, vector store, graph)
 ├── config.py         every setting, read from environment variables and validated
+├── evaluation.py     scores the search and the answers on questions with a known source
 ├── rag/
 │   ├── graph.py          the LangGraph flow: condense, retrieve, rewrite, generate, fallback, grade
 │   ├── memory.py         conversation history: LangGraph checkpoints in PostgreSQL, purge

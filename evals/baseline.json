@@ -1,0 +1,32 @@
+{
+  "fake-embed": {
+    "k": 4,
+    "min_score": 0.2,
+    "chunk_size": 500,
+    "chunk_overlap": 100,
+    "golden": "1ebd99b56697",
+    "questions": 99,
+    "recall_at_1": 0.7677,
+    "recall_at_k": 0.9394,
+    "mrr": 0.8504,
+    "in_context": 0.8485,
+    "facts_in_context": 0.7195,
+    "no_answer_questions": 12,
+    "no_answer_refused": 0.5833
+  },
+  "nomic-embed-text": {
+    "k": 4,
+    "min_score": 0.6,
+    "chunk_size": 500,
+    "chunk_overlap": 100,
+    "golden": "1ebd99b56697",
+    "questions": 99,
+    "recall_at_1": 0.9192,
+    "recall_at_k": 0.9798,
+    "mrr": 0.9467,
+    "in_context": 0.9495,
+    "facts_in_context": 0.8659,
+    "no_answer_questions": 12,
+    "no_answer_refused": 0.8333
+  }
+}

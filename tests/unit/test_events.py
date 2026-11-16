@@ -20,7 +20,15 @@ SAMPLE = {"obslab.provider": "fake", "rag.route": "answered", "rag.rewrites": 1,
           "rag.turn": 2, "gen_ai.conversation.id": "0b0e7c0e-7d1a-4a43-9d7b-0d5f3c3f6a11",
           "rag.refusal.reason": "queue_full", "error.type": "ConnectError", "obslab.chunks": 47,
           "obslab.duration_s": 4.2, "obslab.ingest.reason": "no_notes", "obslab.conversations.removed": 3,
-          "obslab.conversations.kept": 5, "obslab.conversations.ttl_days": 7.0}
+          "obslab.conversations.kept": 5, "obslab.conversations.ttl_days": 7.0,
+          "gen_ai.evaluation.name": "answer", "gen_ai.evaluation.score.value": 1.0,
+          "gen_ai.evaluation.score.label": "right", "obslab.eval.question": "taints-02",
+          "obslab.eval.run": "20261116T101500", "obslab.eval.mode": "answers", "obslab.eval.golden": "1ebd99b56697",
+          "obslab.eval.questions": 121, "obslab.eval.recall_at_k": 0.97, "obslab.eval.mrr": 0.92,
+          "obslab.eval.in_context": 0.88, "obslab.eval.facts_in_context": 0.83, "obslab.eval.right": 0.83,
+          "obslab.eval.declined": 0.83, "obslab.eval.follow_up_right": 0.9, "gen_ai.request.model": "llama3.2:3b",
+          "obslab.embed_model": "nomic-embed-text", "obslab.prompt.version": "78acab74",
+          "obslab.index.id": "26c8aa843dc1", "rag.retrieval.top_k": 4, "rag.retrieval.min_score": 0.6}
 
 
 class Capture(logging.Handler):
@@ -70,6 +78,8 @@ def test_every_event_is_written_with_its_fields_and_its_level(logs, event):
     ("rag.shrugged", {}, "unknown log event"),
     ("rag.answered", {"question": "how?"}, "has no field"),
     ("rag.refused", {"rag.refusal.reason": "tired"}, "is not one of"),
+    ("gen_ai.evaluation.result", {"gen_ai.evaluation.name": "vibes"}, "is not one of"),
+    ("gen_ai.evaluation.result", {"gen_ai.evaluation.score.label": "maybe"}, "is not one of"),
     ("rag.failed", {"error.type": "x" * 65}, "longer than"),
     ("rag.answered", {"rag.route": ["answered"]}, "must be a string"),
 ])

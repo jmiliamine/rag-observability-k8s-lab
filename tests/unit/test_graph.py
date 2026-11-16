@@ -99,3 +99,36 @@ def test_a_model_that_says_it_does_not_know_is_a_fallback(components, otel):
 ])
 def test_declined_recognises_the_model_saying_it_does_not_know(answer, expected):
     assert declined(answer) is expected
+
+
+def test_a_trace_says_which_prompts_and_which_index_answered(components, otel):
+    from obslab.rag.graph import ANSWER, CONDENSE, PROMPT_VERSION, REWRITE, SYSTEM
+    _, spans, _ = otel
+    for chunk in components.rag.store.store.values():         # as the pgvector store does, from rag.index_meta
+        chunk["metadata"]["index_id"] = "26c8aa843dc1"
+    with components.telemetry.tracer.start_as_current_span("request"):
+        components.ask("What does cosine similarity measure between embedding vectors?")
+    by_name = spans_by_name(spans)
+    assert by_name["request"].attributes["obslab.prompt.version"] == PROMPT_VERSION
+    assert by_name["retrieval notes"].attributes["obslab.index.id"] == "26c8aa843dc1"
+    assert len(PROMPT_VERSION) == 8 and all(text for text in (SYSTEM, ANSWER, CONDENSE, REWRITE))
+
+
+def test_a_search_without_an_index_id_leaves_the_attribute_out(components, otel):
+    _, spans, _ = otel
+    components.ask("What does cosine similarity measure between embedding vectors?")
+    assert "obslab.index.id" not in spans_by_name(spans)["retrieval notes"].attributes
+
+
+def test_the_index_id_follows_the_model_the_chunking_and_the_text():
+    from langchain_core.documents import Document
+
+    from obslab.rag.corpus import index_id, split
+    notes = [Document(page_content="A taint repels pods. " * 30, metadata={"source": "taints.md"})]
+    base = index_id(split(notes), "nomic-embed-text")
+    assert base == index_id(split(notes), "nomic-embed-text") and len(base) == 12
+    edited = [Document(page_content="A taint repels a pod. " * 30, metadata={"source": "taints.md"})]
+    moved = [Document(page_content=notes[0].page_content, metadata={"source": "other.md"})]
+    others = {index_id(split(notes), "embeddinggemma:300m"), index_id(split(notes, 400, 60), "nomic-embed-text"),
+              index_id(split(edited), "nomic-embed-text"), index_id(split(moved), "nomic-embed-text")}
+    assert base not in others and len(others) == 4

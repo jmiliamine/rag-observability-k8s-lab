@@ -30,6 +30,8 @@ from pgvector.psycopg import register_vector
 from psycopg import Connection
 from psycopg_pool import ConnectionPool
 
+from . import corpus
+
 SCHEMA = "rag"
 CHUNKS = f"{SCHEMA}.chunks"
 STAGING = f"{SCHEMA}.chunks_build"
@@ -98,7 +100,7 @@ class PgVectorStore(VectorStore):
                 "db.query.summary": f"SELECT {CHUNKS}", "db.response.returned_rows": 0})
         try:
             with self.pool.connection() as conn:
-                dim = self._index_dim(conn)
+                dim, index_id = self._index(conn)
                 if dim is not None and dim != len(vector):
                     raise IndexMismatchError(
                         f"query embedding has {len(vector)} dimensions, the index has {dim}: "
@@ -115,18 +117,22 @@ class PgVectorStore(VectorStore):
         finally:
             if span is not None:
                 span.end()
-        return [(Document(page_content=content, metadata={"source": source, "chunk": chunk}), float(score))
-                for content, source, chunk, score in rows]
+        # The id of the index travels with each result (read in the same connection as the rows), so
+        # the caller can say which index answered without a shared field that another request overwrites.
+        return [(Document(page_content=content, metadata={"source": source, "chunk": chunk, "index_id": index_id}),
+                 float(score)) for content, source, chunk, score in rows]
 
     def similarity_search(self, query: str, k: int = 4, **kwargs: Any) -> list[Document]:
         return [d for d, _ in self.similarity_search_with_score(query, k, **kwargs)]
 
     @staticmethod
-    def _index_dim(conn: Connection) -> int | None:
+    def _index(conn: Connection) -> tuple[int | None, str]:
+        """(dimension, id) of the current index. The id is read through to_jsonb: an index built
+        before the column existed has none, and must still be served."""
         if conn.execute("SELECT to_regclass(%s)", (META,)).fetchone()[0] is None:
-            return None
-        row = conn.execute(f"SELECT dim FROM {META} WHERE id = 1").fetchone()
-        return row[0] if row else None
+            return None, ""
+        row = conn.execute(f"SELECT dim, to_jsonb(m) ->> 'index_id' FROM {META} m WHERE id = 1").fetchone()
+        return (row[0], row[1] or "") if row else (None, "")
 
     # The read side never writes: indexing goes through rebuild() with the writer role.
     def add_texts(self, texts: Iterable[str], metadatas: list[dict] | None = None, **kwargs: Any) -> list[str]:
@@ -177,13 +183,20 @@ def rebuild(pool: ConnectionPool, docs: Sequence[Document], embedding: Embedding
                 id integer PRIMARY KEY CHECK (id = 1),
                 provider text NOT NULL, embed_model text NOT NULL, dim integer NOT NULL,
                 chunks integer NOT NULL, built_at timestamptz NOT NULL DEFAULT now())""")
+            # A table from before the id existed gets the column once. Checked first: ALTER TABLE takes
+            # an exclusive lock even when there is nothing to add, and readiness reads this table.
+            if conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema = %s "
+                            "AND table_name = 'index_meta' AND column_name = 'index_id'", (SCHEMA,)).fetchone() is None:
+                conn.execute(f"ALTER TABLE {META} ADD COLUMN index_id text")
             conn.execute(f"DROP TABLE IF EXISTS {CHUNKS}")
             conn.execute(f"ALTER TABLE {STAGING} RENAME TO chunks")
             conn.execute(f"ALTER INDEX {SCHEMA}.chunks_build_pkey RENAME TO chunks_pkey")
             conn.execute(f"ALTER INDEX {SCHEMA}.chunks_build_embedding RENAME TO chunks_embedding")
             conn.execute(
-                f"""INSERT INTO {META} (id, provider, embed_model, dim, chunks) VALUES (1, %s, %s, %s, %s)
+                f"""INSERT INTO {META} (id, provider, embed_model, dim, chunks, index_id)
+                    VALUES (1, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider, embed_model = EXCLUDED.embed_model,
-                    dim = EXCLUDED.dim, chunks = EXCLUDED.chunks, built_at = now()""",
-                (meta["provider"], meta["embed_model"], dim, len(docs)))
+                    dim = EXCLUDED.dim, chunks = EXCLUDED.chunks, index_id = EXCLUDED.index_id, built_at = now()""",
+                (meta["provider"], meta["embed_model"], dim, len(docs),
+                 corpus.index_id(docs, meta["embed_model"])))
     return len(docs)

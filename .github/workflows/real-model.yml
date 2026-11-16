@@ -94,6 +94,16 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - run: task setup
+      # The search scored on the golden set with the real embedding model, against the baseline
+      # in evals/baseline.json. No chat model is called: the same result on every run.
+      - name: Retrieval on the golden set
+        run: |
+          {
+            echo "### Retrieval on the golden set"
+            echo '```'
+            task eval PROVIDER=ollama
+            echo '```'
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
       # The Compose backends, the sample notes indexed with the real embedding model, then one
       # question and its follow-up: answer, metrics, trace and logs.
       - run: task test:compose PROVIDER=ollama
