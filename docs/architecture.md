@@ -270,6 +270,8 @@ list of fields, not a sentence, and a call with an unknown event or field fails.
 | `ingest.finished` | INFO | chunks, seconds |
 | `ingest.failed` | ERROR | reason: `source_missing` or `no_notes` |
 | `conversations.purged` | INFO | removed, kept, days |
+| `gen_ai.evaluation.result` | INFO | one per question of an evaluation run: what was scored (`retrieval` or `answer`), score, label, question ID, run ID |
+| `eval.finished` | INFO | one per run: the scores, and the embedding model, chat model, prompt version, index ID, k and threshold that produced them |
 | `app.started`, `app.stopping` | INFO | provider |
 
 Each event goes to Loki through OpenTelemetry with its trace and span IDs, and to the container
@@ -301,13 +303,53 @@ mentioned) at temperature 0, on the 28 labelled answers: it flagged 4 of the 5 w
 and also 14 of the 23 correct ones. The bar fixed before the run was 4 caught with at most 2
 false alarms. A 3-billion-parameter model is not a usable judge here, with either method. So
 the score keeps its alert as a drift signal, no judge runs at request time, and the lab does not
-claim to detect a wrong answer. A dedicated grounding model would be an offline evaluation, not
-a runtime check: at about 5 GB it does not fit next to the answering model on a laptop GPU.
+claim to detect a wrong answer. Three models built for this job were then scored on 111
+labelled answers with the same bar (`task eval:checker`). Two fail it; `bespoke-minicheck`
+passes, and is kept as an offline tool that reads the answers of an evaluation run. It is not a
+runtime check: loaded, it takes about 5 GB and does not fit next to the answering model on a
+laptop GPU. The numbers are in [results.md](results.md).
 
 **Every "I don't know" is a fallback.** There are two ways to get one: retrieval finds nothing
 relevant, or chunks are found and the model says they are not enough. Both are counted in
 `rag.fallbacks`, under the reasons `no_relevant_context` and `model_declined`, and both are
 routed as `fallback`, so the fallback rate and its alert see all of them.
+
+**Retrieval is measured on a golden set, and gated.** Telemetry says how fast an answer came,
+not whether the search found the right note. `evals/golden.jsonl` holds 121 hand-written
+questions over the sample notes: 99 with the note that answers them, 12 without answer, 10
+follow-ups. `obslab eval` scores the search on them with no model call: recall@1, recall@4,
+MRR, the share of questions whose note reaches the model above the score threshold, and the
+share whose expected terms are in the text that reaches it (a note can come back through a chunk
+that does not hold the answer). The result is the same on every run, so it can fail a build:
+`task test` compares the fake embeddings with a committed baseline on every push, and the
+real-model workflow does the same with `nomic-embed-text` after each merge. The labels are per
+note, not per chunk, so the set survives a change of chunking. The alternative, a hosted
+evaluation service or an evaluation framework, would add a dependency for a few ratios; the
+module is about 300 lines. The numbers and what was decided from them are in
+[results.md](results.md).
+
+**Answers are measured on the same set, and not gated.** `obslab eval --answers` sends every
+question through the whole graph. A question with an answer is right when it is answered and
+the reply holds the terms the golden set expects; a question without answer when the reply is
+"I don't know"; a follow-up is asked after its previous turn. The check is substring matching
+on purpose: the same verdict on every run and no judge model, at the price of not seeing an
+answer that uses the right words to say the wrong thing. The model does not give the same
+answers twice: two identical runs differ on about 5 questions out of 121. So this level is
+reported, never a gate, and two variants are compared question by question with a sign test
+over repeated runs: a higher average alone is not a result.
+
+**A result can be traced to what produced it.** Three identities are recorded. The prompts: a
+hash of the prompt texts, `obslab.prompt.version`, on the request span. The index: a hash
+of the embedding model and of every chunk, `obslab.index.id`, stored with the index at ingest,
+returned with each search result and written on the retrieval span, so a trace says which index
+answered even when a re-index lands between two requests.
+The evaluation run: each verdict is a `gen_ai.evaluation.result` log event (the GenAI
+convention: evaluation name, score, label) written in the trace of the answer it judges, and
+each run ends with one `eval.finished` event that carries the scores with the embedding model,
+the chat model, the prompt version, the index id, k and the threshold. Chunk size and overlap
+are settings (`OBSLAB_CHUNK_SIZE`, `OBSLAB_CHUNK_OVERLAP`) for the same reason: a variant is a
+configuration, not an edit. Their defaults, 500 characters with 100 of overlap, were chosen on
+the golden set against 800 and 120.
 
 **Serving signals: what the lab measures, and what Ollama does not show.** Measured, from the
 client side: time to first chunk, time per output chunk (the pace of an answer once it has
