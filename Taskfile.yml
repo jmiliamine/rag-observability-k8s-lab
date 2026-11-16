@@ -357,3 +357,11 @@ tasks:
       # TELEMETRY=otlp also sends each result to the collector as a log event (Loki).
       OBSLAB_TELEMETRY: '{{.TELEMETRY | default "none"}}'
     cmds: ['{{.PY}} -m obslab eval {{if .ANSWERS}}--answers{{else if .UPDATE}}--update-baseline{{else}}--check{{end}} {{.CLI_ARGS}}']
+
+  eval:checker:
+    desc: "Measure a grounding checker on the labelled answers against the bar (CHECKER=ollama:bespoke-minicheck | ollama:granite3-guardian:2b | hhem); with RUN=file.json, list the answers of an evaluation run that their note does not support"
+    vars:
+      CHECKER: '{{.CHECKER | default "ollama:bespoke-minicheck"}}'
+    cmds:
+      # The Vectara model needs PyTorch, which the project does not depend on: uv installs it for this run only.
+      - '{{if eq .CHECKER "hhem"}}uv run --no-project --python 3.14 --with torch --with transformers --with sentencepiece --with protobuf python{{else}}{{.PY}}{{end}} scripts/calibrate_checker.py {{.CHECKER}}{{if .RUN}} --run {{.RUN}}{{end}}'

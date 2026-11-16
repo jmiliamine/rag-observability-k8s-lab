@@ -303,8 +303,11 @@ mentioned) at temperature 0, on the 28 labelled answers: it flagged 4 of the 5 w
 and also 14 of the 23 correct ones. The bar fixed before the run was 4 caught with at most 2
 false alarms. A 3-billion-parameter model is not a usable judge here, with either method. So
 the score keeps its alert as a drift signal, no judge runs at request time, and the lab does not
-claim to detect a wrong answer. A dedicated grounding model would be an offline evaluation, not
-a runtime check: at about 5 GB it does not fit next to the answering model on a laptop GPU.
+claim to detect a wrong answer. Three models built for this job were then scored on 111
+labelled answers with the same bar (`task eval:checker`). Two fail it; `bespoke-minicheck`
+passes, and is kept as an offline tool that reads the answers of an evaluation run. It is not a
+runtime check: loaded, it takes about 5 GB and does not fit next to the answering model on a
+laptop GPU. The numbers are in [results.md](results.md).
 
 **Every "I don't know" is a fallback.** There are two ways to get one: retrieval finds nothing
 relevant, or chunks are found and the model says they are not enough. Both are counted in
@@ -345,7 +348,8 @@ convention: evaluation name, score, label) written in the trace of the answer it
 each run ends with one `eval.finished` event that carries the scores with the embedding model,
 the chat model, the prompt version, the index id, k and the threshold. Chunk size and overlap
 are settings (`OBSLAB_CHUNK_SIZE`, `OBSLAB_CHUNK_OVERLAP`) for the same reason: a variant is a
-configuration, not an edit.
+configuration, not an edit. Their defaults, 500 characters with 100 of overlap, were chosen on
+the golden set against 800 and 120.
 
 **Serving signals: what the lab measures, and what Ollama does not show.** Measured, from the
 client side: time to first chunk, time per output chunk (the pace of an answer once it has

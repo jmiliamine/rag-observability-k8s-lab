@@ -9,6 +9,8 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from ..config import CHUNK_OVERLAP, CHUNK_SIZE
+
 TEXT_SUFFIXES = {".md", ".txt"}
 
 
@@ -32,7 +34,7 @@ def index_id(chunks: Sequence[Document], embed_model: str) -> str:
     return h.hexdigest()[:12]
 
 
-def split(docs: Iterable[Document], chunk_size: int = 800, overlap: int = 120) -> list[Document]:
+def split(docs: Iterable[Document], chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[Document]:
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
     chunks = splitter.split_documents(list(docs))
     for i, c in enumerate(chunks):
