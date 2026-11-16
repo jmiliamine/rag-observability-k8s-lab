@@ -126,9 +126,11 @@ def test_trace_reaches_tempo(asked):
 
     def complete_trace():
         # Tempo serves a trace as soon as its first spans land; batches keep arriving for a
-        # few seconds, so wait for the full tree rather than the first fragment.
+        # few seconds, so wait for the full tree rather than the first fragment. The root span
+        # ends last, after both questions: with a real model its batch lands well after the others.
         text = str(request(f"{TEMPO}/api/traces/{trace_id}"))
-        return text if "invoke_workflow rag" in text and "chat " in text else None
+        root = "'name': 'stack-test'"           # the span, not the environment name of the resource
+        return text if "invoke_workflow rag" in text and "chat " in text and root in text else None
 
     text = _poll(complete_trace)
     assert text is not None, f"complete trace {trace_id} not found in Tempo"
