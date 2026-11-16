@@ -81,6 +81,32 @@ def test_k_is_bounded(store):
     assert len(store.similarity_search_with_score("kubernetes", k=0)) == 1
 
 
+def test_every_result_says_which_index_it_comes_from(store, docs):
+    from obslab.rag import corpus
+    hits = store.similarity_search_with_score("etcd backup", k=3)
+    assert {d.metadata["index_id"] for d, _ in hits} == {corpus.index_id(docs, META["embed_model"])}
+
+
+def test_an_index_built_before_the_id_existed_is_still_served(pools, docs):
+    """A database volume from an earlier version: rag.index_meta has no index_id column. The
+    API reads it without failing, and the next ingest adds the column."""
+    from obslab.rag import corpus
+    from obslab.rag.pgvector import PgVectorStore, rebuild
+    from obslab.rag.providers import HashingEmbeddings
+    writer, reader = pools
+    with writer.connection() as conn:
+        conn.execute("ALTER TABLE rag.index_meta DROP COLUMN index_id")
+    try:
+        old = PgVectorStore(reader, HashingEmbeddings())
+        hits = old.similarity_search_with_score("etcd backup", k=2)
+        assert len(hits) == 2 and hits[0][0].metadata["index_id"] == ""
+        assert old.status()[1] == len(docs)
+    finally:
+        rebuild(writer, docs, HashingEmbeddings(), META)
+    (doc, _), = old.similarity_search_with_score("etcd backup", k=1)
+    assert doc.metadata["index_id"] == corpus.index_id(docs, META["embed_model"])
+
+
 def test_question_text_is_never_sql(store, docs):
     hits = store.similarity_search_with_score("x'; DROP TABLE rag.chunks; --", k=2)
     assert len(hits) == 2

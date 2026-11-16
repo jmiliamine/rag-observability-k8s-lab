@@ -19,6 +19,8 @@ OBSLAB_REQUEST_DEADLINE_S  seconds a question may take before it is dropped, def
 OBSLAB_MODEL_READ_TIMEOUT_S  longest silence accepted from the model server, default 60: a model
                          that stops sending is cut here, the request deadline cannot do it alone
 OBSLAB_TOP_K / OBSLAB_MIN_SCORE   retrieval tuning (validated: 1..20 and 0..1)
+OBSLAB_CHUNK_SIZE / OBSLAB_CHUNK_OVERLAP   characters per chunk and shared between two chunks,
+                         read by the ingest (defaults 800 and 120; an index is built with one pair)
 OBSLAB_PRICE_IN / OBSLAB_PRICE_OUT  USD per 1M tokens, to chart an "API-equivalent" cost
 OBSLAB_ENVIRONMENT       deployment.environment.name resource attribute (local, k3d, ...)
 OBSLAB_LOG_STDOUT        true to also write each log event as a JSON line on the process output
@@ -51,6 +53,8 @@ class Settings:
     capture_content: bool = field(default_factory=lambda: _bool("OBSLAB_CAPTURE_CONTENT"))
     top_k: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_TOP_K", "4")))
     min_score: float = field(default_factory=lambda: float(os.environ.get("OBSLAB_MIN_SCORE", "0.6")))
+    chunk_size: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_SIZE", "800")))
+    chunk_overlap: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_CHUNK_OVERLAP", "120")))
     history_turns: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_HISTORY_TURNS", "3")))
     max_turns: int = field(default_factory=lambda: int(os.environ.get("OBSLAB_MAX_TURNS", "20")))
     conversation_ttl_days: float = field(
@@ -75,6 +79,10 @@ class Settings:
             problems.append(f"OBSLAB_TOP_K={self.top_k} (expected 1..{MAX_TOP_K})")
         if not 0.0 <= self.min_score <= 1.0:
             problems.append(f"OBSLAB_MIN_SCORE={self.min_score} (expected 0..1)")
+        if not 100 <= self.chunk_size <= 8000:
+            problems.append(f"OBSLAB_CHUNK_SIZE={self.chunk_size} (expected 100..8000)")
+        if not 0 <= self.chunk_overlap <= self.chunk_size // 2:
+            problems.append(f"OBSLAB_CHUNK_OVERLAP={self.chunk_overlap} (expected 0..half of OBSLAB_CHUNK_SIZE)")
         if not 0 <= self.history_turns <= 10:
             problems.append(f"OBSLAB_HISTORY_TURNS={self.history_turns} (expected 0..10)")
         if not 1 <= self.max_turns <= 200:

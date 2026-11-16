@@ -23,6 +23,7 @@ conversation. The first question of a conversation skips that call.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 import uuid
@@ -64,7 +65,12 @@ CONDENSE = ("Rewrite the follow-up question so that it can be understood without
             "Example: after a conversation about the Eiffel Tower, \"How tall is it?\" becomes "
             "\"How tall is the Eiffel Tower?\"\n\n"
             "Conversation:\n{history}\n\nFollow-up: {question}\nStandalone question:")
+REWRITE = "Rewrite this question as a short search query with key technical terms.\nQuestion: {question}"
+ANSWER = "Context:\n{context}\n\nQuestion: {question}"
 ANSWER_CLIP = 400            # characters of each past answer shown to the condense step
+# Changes whenever one of the prompts changes. On the request span and on every evaluation run,
+# so an answer or a score can be traced back to the wording that produced it.
+PROMPT_VERSION = hashlib.sha256("\x00".join((SYSTEM, ANSWER, CONDENSE, REWRITE)).encode()).hexdigest()[:8]
 
 
 class ConversationTooLongError(RuntimeError):
@@ -207,6 +213,10 @@ class RagApp:
                 span.set_attribute("rag.retrieval.documents", len(hits))
                 span.set_attribute("rag.retrieval.relevant_documents", len(relevant))
                 span.set_attribute("rag.retrieval.top_score", round(float(top), 4))
+                # Which index answered: each result carries it, so two requests served across a
+                # re-index each name their own.
+                if index := next((d.metadata["index_id"] for d, _ in hits if d.metadata.get("index_id")), ""):
+                    span.set_attribute("obslab.index.id", index)
                 if self.telemetry.capture_content:
                     span.set_attribute("gen_ai.retrieval.query.text", query)
         finally:
@@ -225,17 +235,16 @@ class RagApp:
 
     def rewrite(self, state: RagState, config: RunnableConfig) -> dict[str, Any]:
         with self._model_slot("rewrite", config):
-            msg = self.llm.invoke([HumanMessage(
-                content="Rewrite this question as a short search query with key technical terms.\n"
-                        f"Question: {state.get('standalone') or state['question']}")], config)
+            msg = self.llm.invoke([HumanMessage(content=REWRITE.format(
+                question=state.get("standalone") or state["question"]))], config)
         self.rag_metrics.rewrites.add(1, {"gen_ai.data_source.id": self.index_name})
         return {"query": str(msg.content).strip()[:300], "rewrites": state.get("rewrites", 0) + 1}
 
     def generate(self, state: RagState, config: RunnableConfig) -> dict[str, Any]:
         context = "\n\n---\n\n".join(d.page_content for d, _ in state["relevant"])
         messages = [SystemMessage(content=SYSTEM),
-                    HumanMessage(content=f"Context:\n{context}\n\n"
-                                         f"Question: {state.get('standalone') or state['question']}")]
+                    HumanMessage(content=ANSWER.format(
+                        context=context, question=state.get("standalone") or state["question"]))]
         # Streaming on purpose: it is what makes time-to-first-chunk measurable, and what lets a
         # generation be cut when the request deadline passes (closing the stream stops the model).
         deadline, parts = self._deadline(config), []
@@ -307,7 +316,9 @@ class RagApp:
         saving = {"durability": "exit"} if graph.checkpointer else {}
         budget = min(deadline_s or self.settings.request_deadline_s, self.settings.request_deadline_s)
         deadline = time.monotonic() + budget
-        trace.get_current_span().set_attribute("rag.request.deadline_s", budget)   # on the request span
+        request = trace.get_current_span()       # the HTTP request, or the command that asks
+        request.set_attribute("rag.request.deadline_s", budget)
+        request.set_attribute("obslab.prompt.version", PROMPT_VERSION)
         with self.rag_metrics.in_flight():
             state = graph.invoke(
                 {**NEW_TURN, "question": question},

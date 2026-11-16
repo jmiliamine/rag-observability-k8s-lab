@@ -9,7 +9,7 @@ obslab/
 ├── api.py            FastAPI app: POST /ask, /healthz, /readyz
 ├── app.py            wires everything together once (models, vector store, graph)
 ├── config.py         every setting, read from environment variables and validated
-├── evaluation.py     scores the search on questions with a known source (recall, MRR, baseline)
+├── evaluation.py     scores the search and the answers on questions with a known source
 ├── rag/
 │   ├── graph.py          the LangGraph flow: condense, retrieve, rewrite, generate, fallback, grade
 │   ├── memory.py         conversation history: LangGraph checkpoints in PostgreSQL, purge
