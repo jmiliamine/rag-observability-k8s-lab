@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=3d      # 72 hours for the three signals, as in the cluster
